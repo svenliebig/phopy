@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"phopy/internal/domain"
+	"phopy/internal/logging"
 )
 
 type Planner struct {
 	FS          FileSystem
 	Exif        ExifReader
 	ExifWorkers int
+	Logger      logging.Logger
 }
 
 func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDate, endDate *time.Time) (domain.CopyPlan, error) {
@@ -24,10 +26,14 @@ func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDa
 		return domain.CopyPlan{}, errors.New("planner requires FS and Exif")
 	}
 
+	stop := p.Logger.Measure("Planning copy")
+	defer stop()
+
 	metas, warnings, err := p.scan(ctx, sourceDir, startDate, endDate)
 	if err != nil {
 		return domain.CopyPlan{}, err
 	}
+	p.Logger.Verbosef("Collected %d candidate files (%d warnings)", len(metas), len(warnings))
 
 	sort.Slice(metas, func(i, j int) bool {
 		if metas[i].TakenAt.Equal(metas[j].TakenAt) {
@@ -86,6 +92,7 @@ func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDa
 	}
 
 	rangeStart, rangeEnd := deriveRange(items, startDate, endDate)
+	p.Logger.Verbosef("Planned %d items (%d RAW, %d JPEG), %d JPEGs skipped, %d overrides", len(items), rawCount, jpegCount, skippedJPEGs, rawOverrides+jpegOverrides)
 
 	return domain.CopyPlan{
 		Items:         items,
@@ -102,6 +109,9 @@ func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDa
 }
 
 func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate *time.Time) ([]domain.FileMeta, []string, error) {
+	stop := p.Logger.Measure("Scanning source directory")
+	defer stop()
+
 	var paths []string
 	err := p.FS.WalkDir(sourceDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -120,6 +130,7 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 	if err != nil {
 		return nil, nil, err
 	}
+	p.Logger.Verbosef("Found %d candidate files in %s", len(paths), sourceDir)
 
 	workerCount := p.ExifWorkers
 	if workerCount <= 0 {
@@ -128,6 +139,7 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 	if workerCount < 1 {
 		workerCount = 1
 	}
+	p.Logger.Verbosef("Using %d EXIF workers", workerCount)
 
 	type result struct {
 		meta    domain.FileMeta

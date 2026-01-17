@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"phopy/internal/app"
 	"phopy/internal/config"
 	appErrors "phopy/internal/errors"
 	"phopy/internal/infra/exif"
 	"phopy/internal/infra/fs"
+	"phopy/internal/logging"
 	"phopy/internal/presentation"
 
 	"github.com/spf13/cobra"
@@ -77,6 +79,9 @@ func run(ctx context.Context, opts cliOptions) error {
 		return appErrors.Wrap(appErrors.InvalidConfig, "config", "", err)
 	}
 
+	logger := logging.New(os.Stdout, cfg.Verbose)
+	logger.Verbosef("Config: source=%s target=%s dry-run=%t date-range=%s", cfg.SourceDir, cfg.TargetDir, cfg.DryRun, formatDateRange(cfg.StartDate, cfg.EndDate))
+
 	filesystem := fs.OSFS{}
 	exifReader := exif.Reader{}
 
@@ -85,8 +90,9 @@ func run(ctx context.Context, opts cliOptions) error {
 	}
 
 	planner := app.Planner{
-		FS:   filesystem,
-		Exif: exifReader,
+		FS:     filesystem,
+		Exif:   exifReader,
+		Logger: logger,
 	}
 
 	plan, err := planner.Plan(ctx, cfg.SourceDir, cfg.TargetDir, cfg.StartDate, cfg.EndDate)
@@ -100,6 +106,7 @@ func run(ctx context.Context, opts cliOptions) error {
 	}
 
 	if cfg.DryRun {
+		logger.Verbosef("Dry run: no files will be copied")
 		printer.PrintDryRun(plan)
 		return nil
 	}
@@ -107,6 +114,7 @@ func run(ctx context.Context, opts cliOptions) error {
 	includeOverrides := false
 	overridesConfirmed := 0
 	if len(plan.OverrideItems) > 0 {
+		logger.Verbosef("Override confirmation required for %d files", len(plan.OverrideItems))
 		confirmed, confirmErr := confirmOverrides(len(plan.OverrideItems))
 		if confirmErr != nil {
 			return appErrors.Wrap(appErrors.Internal, "prompt", "", confirmErr)
@@ -117,14 +125,16 @@ func run(ctx context.Context, opts cliOptions) error {
 		}
 	}
 
+	logger.Verbosef("Ensuring target directory exists")
 	if err := filesystem.MkdirAll(cfg.TargetDir, 0o755); err != nil {
 		return appErrors.Wrap(appErrors.IOFailure, "mkdir", cfg.TargetDir, err)
 	}
 
-	executor := app.Executor{FS: filesystem}
+	executor := app.Executor{FS: filesystem, Logger: logger}
 	if err := executor.Execute(ctx, plan, includeOverrides); err != nil {
 		return appErrors.Wrap(appErrors.IOFailure, "copy", cfg.TargetDir, err)
 	}
+	logger.Verbosef("Copy complete")
 
 	printer.PrintExecution(plan, overridesConfirmed)
 	return nil
@@ -178,4 +188,19 @@ func confirmOverrides(count int) (bool, error) {
 func exitWithError(err error) {
 	fmt.Fprintln(os.Stderr, appErrors.UserMessage(err))
 	os.Exit(1)
+}
+
+func formatDateRange(startDate, endDate *time.Time) string {
+	if startDate == nil && endDate == nil {
+		return "all dates"
+	}
+	start := "any"
+	if startDate != nil {
+		start = startDate.Format("2006-01-02")
+	}
+	end := "any"
+	if endDate != nil {
+		end = endDate.Format("2006-01-02")
+	}
+	return fmt.Sprintf("%s to %s", start, end)
 }
