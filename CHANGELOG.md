@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/svenliebig/phopy/compare/v1.1.0...v1.2.0) (2026-01-17)
+
+
+### Features
+
+* add verbose logging ([eec21dc](https://github.com/svenliebig/phopy/commit/eec21dc02b162d8f503dc97aa73ea53f40c8823e))
+
 ## [1.1.0](https://github.com/svenliebig/phopy/compare/v1.0.0...v1.1.0) (2026-01-17)
 
 
