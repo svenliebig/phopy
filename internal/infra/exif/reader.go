@@ -31,7 +31,7 @@ func (Reader) DateTimeOriginal(ctx context.Context, path string) (time.Time, err
 
 	if tag, err := x.Get(goexif.DateTimeOriginal); err == nil {
 		if str, err := tag.StringVal(); err == nil {
-			parsed, err := time.Parse("2006:01:02 15:04:05", str)
+			parsed, err := time.ParseInLocation("2006:01:02 15:04:05", str, time.Local)
 			if err == nil {
 				return parsed, nil
 			}
@@ -39,7 +39,7 @@ func (Reader) DateTimeOriginal(ctx context.Context, path string) (time.Time, err
 	}
 
 	if parsed, err := x.DateTime(); err == nil {
-		return parsed, nil
+		return parsed.In(time.Local), nil
 	}
 
 	return time.Time{}, errors.New("exif datetime not found")
