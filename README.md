@@ -32,3 +32,12 @@ You can pass phopy configuration directly into the command, some also support EN
 ```bash
 phopy --source /path/to/source --target /path/to/target
 ```
+
+## Build
+
+```bash
+go build ./cmd/phopy
+```
+
+The binary will be created in the current directory as `phopy`.
+
