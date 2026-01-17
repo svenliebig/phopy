@@ -1,0 +1,30 @@
+project_name: phopy
+
+builds:
+  - id: phopy
+    main: ./cmd/phopy
+    binary: phopy
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Features
+      regexp: "^feat(\\(.+\\))?:"
+    - title: Fixes
+      regexp: "^fix(\\(.+\\))?:"
+    - title: Chore
+      regexp: "^(chore|build|ci|docs|refactor|test)(\\(.+\\))?:"
+  filters:
+    exclude:
+      - "^Merge"
+
+release:
+  footer: ""
