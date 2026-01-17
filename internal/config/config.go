@@ -29,10 +29,10 @@ func Parse(args []string) (Config, error) {
 	fs.BoolVar(&cfg.DryRun, "d", false, "Dry run (shorthand)")
 	fs.BoolVar(&cfg.Verbose, "verbose", false, "Verbose output")
 	fs.BoolVar(&cfg.Verbose, "v", false, "Verbose output (shorthand)")
-	startDate := fs.String("start-date", "", "Start date (YYYY-MM-DD)")
-	fs.StringVar(startDate, "sd", "", "Start date (YYYY-MM-DD) (shorthand)")
-	endDate := fs.String("end-date", "", "End date (YYYY-MM-DD)")
-	fs.StringVar(endDate, "ed", "", "End date (YYYY-MM-DD) (shorthand)")
+	fromDate := fs.String("from", "", "From date (YYYY-MM-DD)")
+	fs.StringVar(fromDate, "f", "", "From date (YYYY-MM-DD) (shorthand)")
+	untilDate := fs.String("until", "", "Until date (YYYY-MM-DD)")
+	fs.StringVar(untilDate, "u", "", "Until date (YYYY-MM-DD) (shorthand)")
 
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
@@ -47,28 +47,34 @@ func Parse(args []string) (Config, error) {
 	if !cfg.Verbose {
 		cfg.Verbose = envTruthy("PHOPY_VERBOSE")
 	}
-	if *startDate == "" {
-		*startDate = envOrEmpty("PHOPY_START_DATE")
+	if *fromDate == "" {
+		*fromDate = envOrEmpty("PHOPY_FROM")
+		if *fromDate == "" {
+			*fromDate = envOrEmpty("PHOPY_START_DATE")
+		}
 	}
-	if *endDate == "" {
-		*endDate = envOrEmpty("PHOPY_END_DATE")
+	if *untilDate == "" {
+		*untilDate = envOrEmpty("PHOPY_UNTIL")
+		if *untilDate == "" {
+			*untilDate = envOrEmpty("PHOPY_END_DATE")
+		}
 	}
 
 	if cfg.SourceDir == "" || cfg.TargetDir == "" {
 		return Config{}, errors.New("source and target are required")
 	}
 
-	if *startDate != "" {
-		parsed, err := time.ParseInLocation("2006-01-02", *startDate, time.Local)
+	if *fromDate != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", *fromDate, time.Local)
 		if err != nil {
-			return Config{}, errors.New("invalid start date, use YYYY-MM-DD")
+			return Config{}, errors.New("invalid from date, use YYYY-MM-DD")
 		}
 		cfg.StartDate = &parsed
 	}
-	if *endDate != "" {
-		parsed, err := time.ParseInLocation("2006-01-02", *endDate, time.Local)
+	if *untilDate != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", *untilDate, time.Local)
 		if err != nil {
-			return Config{}, errors.New("invalid end date, use YYYY-MM-DD")
+			return Config{}, errors.New("invalid until date, use YYYY-MM-DD")
 		}
 		parsed = parsed.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
 		cfg.EndDate = &parsed

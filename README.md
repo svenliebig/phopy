@@ -24,8 +24,8 @@ You can pass phopy configuration directly into the command, some also support EN
 | `--target` or `-t`      | The target directory to copy to.                                              | PHOPY_TARGET_DIR    |
 | `--dry-run` or `-d`     | Whether to perform a dry run (logging only) of the copy operation.            |                     |
 | `--verbose` or `-v`     | Whether to print verbose output.                                              | PHOPY_VERBOSE       |
-| `--start-date` or `-sd` | The start date to copy from when the picture was taken, skip earlier.         | PHOPY_START_DATE    |
-| `--end-date` or `-ed`   | The end date to copy to when the picture was taken, skip later.               | PHOPY_END_DATE      |
+| `--from` or `-f`        | The start date to copy from when the picture was taken, skip earlier.         | PHOPY_FROM          |
+| `--until` or `-u`       | The end date to copy to when the picture was taken, skip later.               | PHOPY_UNTIL         |
 
 ## Usage
 
