@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/svenliebig/phopy/compare/v1.2.0...v1.3.0) (2026-01-21)
+
+
+### Features
+
+* add a more presentable terminal ui for the application ([81095eb](https://github.com/svenliebig/phopy/commit/81095eb1519a7dac382122d5014962eb66e2d909))
+
 ## [1.2.0](https://github.com/svenliebig/phopy/compare/v1.1.0...v1.2.0) (2026-01-17)
 
 
