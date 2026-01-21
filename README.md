@@ -4,7 +4,13 @@ A photo copy tool for my personal needs.
 
 ## Install
 
-...
+Download the latest release from the [GitHub Releases page](https://github.com/svenliebig/phopy/releases) and move it into your PATH.
+
+### Verify Installation
+
+```bash
+phopy --help
+```
 
 ## Features
 
