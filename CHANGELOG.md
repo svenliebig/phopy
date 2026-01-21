@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/svenliebig/phopy/compare/v1.5.0...v1.6.0) (2026-01-21)
+
+
+### Features
+
+* add homebrew tap ([5fab356](https://github.com/svenliebig/phopy/commit/5fab3564159108fedc74a7b690c043ecb827be85))
+
 ## [1.5.0](https://github.com/svenliebig/phopy/compare/v1.4.1...v1.5.0) (2026-01-21)
 
 
