@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation - Phopy</title>
+  <meta name="description" content="Complete documentation for phopy - CLI parameters, environment variables, supported formats, and usage examples.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-content">
+      <a href="index.html" class="nav-logo">
+        <span class="nav-logo-icon">📷</span>
+        <span>phopy</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="documentation.html" class="active">Documentation</a></li>
+        <li><a href="https://github.com/svenliebig/phopy" target="_blank">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Documentation Layout -->
+  <div class="docs-layout">
+    <!-- Sidebar -->
+    <aside class="docs-sidebar">
+      <h4>Getting Started</h4>
+      <ul>
+        <li><a href="#quick-start">Quick Start</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+      
+      <h4>Reference</h4>
+      <ul>
+        <li><a href="#cli-options">CLI Options</a></li>
+        <li><a href="#environment-variables">Environment Variables</a></li>
+        <li><a href="#supported-formats">Supported Formats</a></li>
+      </ul>
+      
+      <h4>Concepts</h4>
+      <ul>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#raw-jpeg-handling">RAW/JPEG Handling</a></li>
+        <li><a href="#duplicate-detection">Duplicate Detection</a></li>
+        <li><a href="#date-filtering">Date Filtering</a></li>
+      </ul>
+      
+      <h4>Advanced</h4>
+      <ul>
+        <li><a href="#shell-completion">Shell Completion</a></li>
+        <li><a href="#examples">Examples</a></li>
+      </ul>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="docs-content">
+      <h1>Documentation</h1>
+      <p>Everything you need to know about using phopy for your photo organization workflow.</p>
+
+      <!-- Quick Start -->
+      <h2 id="quick-start">Quick Start</h2>
+      <p>Get up and running with phopy in under a minute.</p>
+      
+      <h3>Basic Usage</h3>
+      <p>Copy all photos from a source directory to a target directory:</p>
+      <div class="code-block">
+        <pre><code>phopy --source /path/to/source --target /path/to/target</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy --source /path/to/source --target /path/to/target')">Copy</button>
+      </div>
+      
+      <p>Or use the short flags:</p>
+      <div class="code-block">
+        <pre><code>phopy -s /path/to/source -t /path/to/target</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy -s /path/to/source -t /path/to/target')">Copy</button>
+      </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-title">💡 Tip</div>
+        <p>Use <code>--dry-run</code> to preview what would be copied without actually copying any files.</p>
+      </div>
+
+      <!-- Installation -->
+      <h2 id="installation">Installation</h2>
+      
+      <h3>Homebrew (macOS/Linux)</h3>
+      <p>The recommended way to install phopy:</p>
+      <div class="code-block">
+        <pre><code>brew install svenliebig/tap/phopy</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'brew install svenliebig/tap/phopy')">Copy</button>
+      </div>
+
+      <h3>Manual Installation</h3>
+      <p>Download the latest release from the <a href="https://github.com/svenliebig/phopy/releases" target="_blank">GitHub Releases page</a> and move the binary to a directory in your PATH.</p>
+      
+      <div class="code-block">
+        <pre><code># Example for macOS/Linux
+mv phopy /usr/local/bin/
+chmod +x /usr/local/bin/phopy</code></pre>
+      </div>
+
+      <h3>Verify Installation</h3>
+      <div class="code-block">
+        <pre><code>phopy --help</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy --help')">Copy</button>
+      </div>
+
+      <!-- CLI Options -->
+      <h2 id="cli-options">CLI Options</h2>
+      <p>Complete reference for all command-line options.</p>
+      
+      <table class="reference-table">
+        <thead>
+          <tr>
+            <th>Option</th>
+            <th>Short</th>
+            <th>Description</th>
+            <th>Default</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>--source</td>
+            <td>-s</td>
+            <td>The source directory to copy photos from. This is where your camera or SD card photos are located.</td>
+            <td><em>Required</em></td>
+          </tr>
+          <tr>
+            <td>--target</td>
+            <td>-t</td>
+            <td>The target directory to copy photos to. This is your photo archive or destination folder.</td>
+            <td><em>Required</em></td>
+          </tr>
+          <tr>
+            <td>--dry-run</td>
+            <td>-d</td>
+            <td>Perform a dry run without actually copying any files. Shows what would be copied.</td>
+            <td>false</td>
+          </tr>
+          <tr>
+            <td>--verbose</td>
+            <td>-v</td>
+            <td>Enable verbose output with detailed logging about the scanning and copying process.</td>
+            <td>false</td>
+          </tr>
+          <tr>
+            <td>--override</td>
+            <td>-o</td>
+            <td>Allow overwriting files that already exist in the target directory. Without this flag, existing files are skipped.</td>
+            <td>false</td>
+          </tr>
+          <tr>
+            <td>--from</td>
+            <td>-f</td>
+            <td>Start date filter in <code>YYYY-MM-DD</code> format. Only copy photos taken on or after this date.</td>
+            <td><em>None</em></td>
+          </tr>
+          <tr>
+            <td>--until</td>
+            <td>-u</td>
+            <td>End date filter in <code>YYYY-MM-DD</code> format. Only copy photos taken on or before this date (inclusive, until 23:59:59).</td>
+            <td><em>None</em></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-info">
+        <div class="callout-title">ℹ️ Note</div>
+        <p>The <code>--source</code> and <code>--target</code> options are required unless set via environment variables.</p>
+      </div>
+
+      <!-- Environment Variables -->
+      <h2 id="environment-variables">Environment Variables</h2>
+      <p>Configure phopy using environment variables for convenient repeated use.</p>
+      
+      <table class="reference-table">
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Description</th>
+            <th>Equivalent Flag</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PHOPY_SOURCE_DIR</td>
+            <td>Default source directory for photo imports</td>
+            <td>--source, -s</td>
+          </tr>
+          <tr>
+            <td>PHOPY_TARGET_DIR</td>
+            <td>Default target directory for photo exports</td>
+            <td>--target, -t</td>
+          </tr>
+          <tr>
+            <td>PHOPY_VERBOSE</td>
+            <td>Enable verbose output (values: <code>true</code>, <code>1</code>, <code>yes</code>, <code>y</code>)</td>
+            <td>--verbose, -v</td>
+          </tr>
+          <tr>
+            <td>PHOPY_FROM</td>
+            <td>Default start date filter (<code>YYYY-MM-DD</code>)</td>
+            <td>--from, -f</td>
+          </tr>
+          <tr>
+            <td>PHOPY_START_DATE</td>
+            <td>Alias for <code>PHOPY_FROM</code></td>
+            <td>--from, -f</td>
+          </tr>
+          <tr>
+            <td>PHOPY_UNTIL</td>
+            <td>Default end date filter (<code>YYYY-MM-DD</code>)</td>
+            <td>--until, -u</td>
+          </tr>
+          <tr>
+            <td>PHOPY_END_DATE</td>
+            <td>Alias for <code>PHOPY_UNTIL</code></td>
+            <td>--until, -u</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Example: Setting Environment Variables</h3>
+      <div class="code-block">
+        <pre><code># Add to your ~/.bashrc or ~/.zshrc
+export PHOPY_TARGET_DIR="$HOME/Photos/Archive"
+export PHOPY_VERBOSE=true
+
+# Now you can run with just the source:
+phopy -s /Volumes/SD_CARD/DCIM</code></pre>
+      </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-title">💡 Tip</div>
+        <p>CLI flags always take precedence over environment variables when both are specified.</p>
+      </div>
+
+      <!-- Supported Formats -->
+      <h2 id="supported-formats">Supported Formats</h2>
+      <p>phopy recognizes the following image file formats:</p>
+      
+      <h3>RAW Formats</h3>
+      <p>These formats are prioritized during copying:</p>
+      <div style="margin: 1rem 0;">
+        <span class="format-tag raw">.arw</span>
+        <span class="format-tag raw">.cr2</span>
+        <span class="format-tag raw">.cr3</span>
+        <span class="format-tag raw">.nef</span>
+        <span class="format-tag raw">.raf</span>
+        <span class="format-tag raw">.rw2</span>
+        <span class="format-tag raw">.orf</span>
+        <span class="format-tag raw">.dng</span>
+      </div>
+      
+      <table class="reference-table">
+        <thead>
+          <tr>
+            <th>Extension</th>
+            <th>Manufacturer</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>.arw</td><td>Sony</td></tr>
+          <tr><td>.cr2</td><td>Canon (older)</td></tr>
+          <tr><td>.cr3</td><td>Canon (newer)</td></tr>
+          <tr><td>.nef</td><td>Nikon</td></tr>
+          <tr><td>.raf</td><td>Fujifilm</td></tr>
+          <tr><td>.rw2</td><td>Panasonic</td></tr>
+          <tr><td>.orf</td><td>Olympus</td></tr>
+          <tr><td>.dng</td><td>Adobe Digital Negative (universal)</td></tr>
+        </tbody>
+      </table>
+
+      <h3>JPEG Formats</h3>
+      <p>Standard JPEG files are copied only when no matching RAW exists:</p>
+      <div style="margin: 1rem 0;">
+        <span class="format-tag jpeg">.jpg</span>
+        <span class="format-tag jpeg">.jpeg</span>
+      </div>
+
+      <!-- How It Works -->
+      <h2 id="how-it-works">How It Works</h2>
+      <p>phopy follows an opinionated workflow designed for photographers who shoot RAW+JPEG:</p>
+      
+      <ol>
+        <li><strong>Scan:</strong> phopy walks through the source directory and identifies all RAW and JPEG files</li>
+        <li><strong>Filter:</strong> Files are filtered based on date range (if specified) using EXIF metadata</li>
+        <li><strong>Match:</strong> JPEGs are checked for matching RAW files (same base filename)</li>
+        <li><strong>Plan:</strong> A copy plan is generated showing what will be copied</li>
+        <li><strong>Execute:</strong> Files are copied with progress feedback</li>
+      </ol>
+
+      <!-- RAW/JPEG Handling -->
+      <h2 id="raw-jpeg-handling">RAW/JPEG Handling</h2>
+      <p>The core feature of phopy is intelligent RAW/JPEG handling:</p>
+      
+      <ul>
+        <li><strong>RAW files are always copied</strong> — These are your primary image files</li>
+        <li><strong>JPEGs are only copied when no matching RAW exists</strong> — This handles cases like HDR, panoramas, or in-camera edits where the camera only produces a JPEG</li>
+      </ul>
+
+      <h3>Example Scenario</h3>
+      <p>Given these files in your source directory:</p>
+      <div class="code-block">
+        <pre><code>IMG_001.ARW    # RAW file
+IMG_001.JPG    # JPEG (will be skipped - RAW exists)
+IMG_002.ARW    # RAW file
+IMG_002.JPG    # JPEG (will be skipped - RAW exists)  
+IMG_003.JPG    # JPEG (will be copied - no RAW)
+HDR_001.JPG    # JPEG (will be copied - no RAW)</code></pre>
+      </div>
+      
+      <p>phopy will copy:</p>
+      <ul>
+        <li><code>IMG_001.ARW</code></li>
+        <li><code>IMG_002.ARW</code></li>
+        <li><code>IMG_003.JPG</code></li>
+        <li><code>HDR_001.JPG</code></li>
+      </ul>
+      
+      <p>And skip <code>IMG_001.JPG</code> and <code>IMG_002.JPG</code> because their corresponding RAW files are being copied.</p>
+
+      <!-- Duplicate Detection -->
+      <h2 id="duplicate-detection">Duplicate Detection</h2>
+      <p>phopy checks if files already exist in the target directory before copying:</p>
+      
+      <ul>
+        <li><strong>Without <code>--override</code>:</strong> Existing files are automatically skipped</li>
+        <li><strong>With <code>--override</code>:</strong> You'll be prompted to confirm overwriting existing files</li>
+      </ul>
+
+      <div class="callout callout-warning">
+        <div class="callout-title">⚠️ Warning</div>
+        <p>When using <code>--override</code>, make sure you understand which files will be replaced. Use <code>--dry-run</code> first to preview the changes.</p>
+      </div>
+
+      <!-- Date Filtering -->
+      <h2 id="date-filtering">Date Filtering</h2>
+      <p>Filter photos by their capture date using EXIF metadata:</p>
+      
+      <div class="code-block">
+        <pre><code># Copy photos from a specific date
+phopy -s ./source -t ./target --from 2024-06-15 --until 2024-06-15
+
+# Copy photos from a date range
+phopy -s ./source -t ./target --from 2024-01-01 --until 2024-03-31
+
+# Copy photos from a start date onwards
+phopy -s ./source -t ./target --from 2024-06-01
+
+# Copy photos up to an end date
+phopy -s ./source -t ./target --until 2024-05-31</code></pre>
+      </div>
+
+      <h3>Date Format</h3>
+      <p>Dates must be specified in <code>YYYY-MM-DD</code> format:</p>
+      <ul>
+        <li><code>--from 2024-06-15</code> — Include photos from June 15, 2024 at 00:00:00 onwards</li>
+        <li><code>--until 2024-06-15</code> — Include photos up to June 15, 2024 at 23:59:59 (inclusive)</li>
+      </ul>
+
+      <div class="callout callout-info">
+        <div class="callout-title">ℹ️ EXIF Fallback</div>
+        <p>If a photo doesn't have EXIF date metadata, phopy falls back to the file's modification time. You'll see a warning in verbose mode when this happens.</p>
+      </div>
+
+      <!-- Shell Completion -->
+      <h2 id="shell-completion">Shell Completion</h2>
+      <p>phopy supports shell completion for bash, zsh, fish, and PowerShell.</p>
+      
+      <h3>Bash</h3>
+      <div class="code-block">
+        <pre><code># Add to ~/.bashrc
+source <(phopy completion bash)</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'source <(phopy completion bash)')">Copy</button>
+      </div>
+
+      <h3>Zsh</h3>
+      <div class="code-block">
+        <pre><code># Add to ~/.zshrc
+source <(phopy completion zsh)</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'source <(phopy completion zsh)')">Copy</button>
+      </div>
+
+      <h3>Fish</h3>
+      <div class="code-block">
+        <pre><code># Add to ~/.config/fish/config.fish
+phopy completion fish | source</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy completion fish | source')">Copy</button>
+      </div>
+
+      <h3>PowerShell</h3>
+      <div class="code-block">
+        <pre><code># Add to your PowerShell profile
+phopy completion powershell | Out-String | Invoke-Expression</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy completion powershell | Out-String | Invoke-Expression')">Copy</button>
+      </div>
+
+      <!-- Examples -->
+      <h2 id="examples">Examples</h2>
+      <p>Common usage patterns for different photography workflows.</p>
+      
+      <h3>Import from SD Card</h3>
+      <p>Copy all photos from your camera's SD card to your archive:</p>
+      <div class="code-block">
+        <pre><code>phopy --source /Volumes/SD_CARD/DCIM --target ~/Photos/Archive</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy --source /Volumes/SD_CARD/DCIM --target ~/Photos/Archive')">Copy</button>
+      </div>
+
+      <h3>Import Photos from a Trip</h3>
+      <p>Copy only photos from a specific date range:</p>
+      <div class="code-block">
+        <pre><code>phopy -s /Volumes/SD_CARD/DCIM -t ~/Photos/Vacation2024 \
+      --from 2024-07-01 --until 2024-07-14</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy -s /Volumes/SD_CARD/DCIM -t ~/Photos/Vacation2024 --from 2024-07-01 --until 2024-07-14')">Copy</button>
+      </div>
+
+      <h3>Preview Before Copying</h3>
+      <p>Use dry run mode to see what would be copied:</p>
+      <div class="code-block">
+        <pre><code>phopy -s ./source -t ./target --dry-run --verbose</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy -s ./source -t ./target --dry-run --verbose')">Copy</button>
+      </div>
+
+      <h3>Re-import with Override</h3>
+      <p>Re-copy photos and replace existing files:</p>
+      <div class="code-block">
+        <pre><code>phopy -s /Volumes/SD_CARD/DCIM -t ~/Photos/Archive --override</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy -s /Volumes/SD_CARD/DCIM -t ~/Photos/Archive --override')">Copy</button>
+      </div>
+
+      <h3>Using Environment Variables</h3>
+      <p>Set up defaults for repeated use:</p>
+      <div class="code-block">
+        <pre><code># In your shell profile (~/.zshrc, ~/.bashrc)
+export PHOPY_TARGET_DIR="$HOME/Photos/Archive"
+
+# Now just specify the source
+phopy -s /Volumes/SD_CARD/DCIM
+
+# Or copy from today's shoot
+phopy -s /Volumes/SD_CARD/DCIM --from 2024-06-15</code></pre>
+      </div>
+
+      <h3>Verbose Mode for Debugging</h3>
+      <p>See detailed information about the scanning and copying process:</p>
+      <div class="code-block">
+        <pre><code>phopy -s ./source -t ./target --verbose</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(this, 'phopy -s ./source -t ./target --verbose')">Copy</button>
+      </div>
+
+      <div style="margin-top: 4rem; padding: 2rem; background: var(--bg-secondary); border-radius: var(--radius-lg); text-align: center;">
+        <h3 style="margin-bottom: 1rem;">Need Help?</h3>
+        <p style="margin-bottom: 1.5rem; max-width: none;">Found a bug or have a feature request? Open an issue on GitHub.</p>
+        <a href="https://github.com/svenliebig/phopy/issues" target="_blank" class="btn btn-secondary">
+          <span>Open an Issue</span>
+          <span>→</span>
+        </a>
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer" style="margin-left: 260px;">
+    <div class="footer-content">
+      <p class="footer-copy">
+        Made with ☕ by <a href="https://github.com/svenliebig" target="_blank">Sven Liebig</a> · MIT License
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    function copyToClipboard(button, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        button.classList.add('copied');
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.classList.remove('copied');
+        }, 2000);
+      });
+    }
+
+    // Highlight active section in sidebar
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          document.querySelectorAll('.docs-sidebar a').forEach(a => a.classList.remove('active'));
+          const link = document.querySelector(`.docs-sidebar a[href="#${entry.target.id}"]`);
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-20% 0px -80% 0px' });
+
+    document.querySelectorAll('h2[id], h3[id]').forEach(section => {
+      observer.observe(section);
+    });
+  </script>
+</body>
+</html>

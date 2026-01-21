@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phopy - Smart Photo Organization for Photographers</title>
+  <meta name="description" content="A CLI tool for photographers that intelligently copies photos from your camera, handling RAW/JPEG pairs, duplicates, and date filtering with a beautiful terminal UI.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📷</text></svg>">
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-content">
+      <a href="index.html" class="nav-logo">
+        <span class="nav-logo-icon">📷</span>
+        <span>phopy</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="documentation.html">Documentation</a></li>
+        <li><a href="https://github.com/svenliebig/phopy" target="_blank">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-badge">
+      <span>🚀</span>
+      <span>v1.5.0 — Now with progress indicators</span>
+    </div>
+    
+    <h1 class="hero-title">
+      Photo organization<br><span class="highlight">made simple</span>
+    </h1>
+    
+    <p class="hero-description">
+      A CLI tool for photographers that intelligently copies photos from your camera, 
+      handling RAW/JPEG pairs, duplicates, and date filtering with a beautiful terminal UI.
+    </p>
+    
+    <div class="hero-buttons">
+      <a href="documentation.html" class="btn btn-primary">
+        <span class="btn-icon">📖</span>
+        <span>Get Started</span>
+      </a>
+      <a href="https://github.com/svenliebig/phopy" target="_blank" class="btn btn-secondary">
+        <span class="btn-icon">⭐</span>
+        <span>Star on GitHub</span>
+      </a>
+    </div>
+    
+    <div class="hero-video">
+      <video autoplay loop muted playsinline>
+        <source src="assets/phopy-showcase.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features">
+    <div class="container">
+      <div class="section-header">
+        <h2>Built for photographers</h2>
+        <p>Every feature designed around real photography workflows</p>
+      </div>
+      
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📸</div>
+          <h3>RAW Priority</h3>
+          <p>Automatically prioritizes RAW files and skips JPEGs when a matching RAW exists. Perfect for photographers who shoot RAW+JPEG.</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">🔄</div>
+          <h3>Smart Duplicate Handling</h3>
+          <p>Detects existing files in your target directory and prompts before overwriting. Never accidentally lose your organized photos.</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">📅</div>
+          <h3>Date Range Filtering</h3>
+          <p>Copy only photos from specific date ranges using EXIF data. Ideal for batch importing photos from specific shoots or trips.</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">✨</div>
+          <h3>Beautiful Terminal UI</h3>
+          <p>Progress bars, file previews, and clear summaries. Know exactly what's being copied with a modern, colorful interface.</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">🔧</div>
+          <h3>Flexible Configuration</h3>
+          <p>Use CLI flags or environment variables. Set up your defaults once and run phopy with minimal typing.</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">🧪</div>
+          <h3>Dry Run Mode</h3>
+          <p>Preview exactly what would be copied without making any changes. Test your parameters before committing to a full copy.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Installation Section -->
+  <section class="installation">
+    <div class="container">
+      <div class="section-header">
+        <h2>Quick Installation</h2>
+        <p>Get started in seconds with Homebrew or download directly</p>
+      </div>
+      
+      <div class="install-methods">
+        <div class="install-card">
+          <h3><span>🍺</span> Homebrew</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9375rem;">Recommended for macOS and Linux users</p>
+          <div class="code-block">
+            <pre><code>brew install svenliebig/tap/phopy</code></pre>
+            <button class="copy-btn" onclick="copyToClipboard(this, 'brew install svenliebig/tap/phopy')">Copy</button>
+          </div>
+        </div>
+        
+        <div class="install-card">
+          <h3><span>📦</span> Manual Download</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9375rem;">Download binary for any platform</p>
+          <a href="https://github.com/svenliebig/phopy/releases" target="_blank" class="btn btn-secondary" style="width: 100%; justify-content: center;">
+            <span>View Releases</span>
+            <span>→</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Example Section -->
+  <section class="features" style="background: var(--bg-primary);">
+    <div class="container">
+      <div class="section-header">
+        <h2>Simple to use</h2>
+        <p>One command to organize your photos</p>
+      </div>
+      
+      <div style="max-width: 700px; margin: 0 auto;">
+        <div class="code-block" style="font-size: 1rem;">
+          <pre><code><span style="color: var(--text-muted);"># Copy photos from SD card to your archive</span>
+phopy --source /Volumes/SD_CARD/DCIM --target ~/Photos/Archive
+
+<span style="color: var(--text-muted);"># Copy only photos from January 2024</span>
+phopy -s /Volumes/SD_CARD/DCIM -t ~/Photos/Archive \
+      --from 2024-01-01 --until 2024-01-31
+
+<span style="color: var(--text-muted);"># Preview what would be copied (dry run)</span>
+phopy -s ./source -t ./target --dry-run</code></pre>
+        </div>
+        
+        <div style="text-align: center; margin-top: 2rem;">
+          <a href="documentation.html" class="btn btn-primary">
+            <span>Read the full documentation</span>
+            <span>→</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <ul class="footer-links">
+        <li><a href="https://github.com/svenliebig/phopy" target="_blank">
+          <span>GitHub</span>
+        </a></li>
+        <li><a href="https://github.com/svenliebig/phopy/releases" target="_blank">
+          <span>Releases</span>
+        </a></li>
+        <li><a href="https://github.com/svenliebig/phopy/issues" target="_blank">
+          <span>Issues</span>
+        </a></li>
+        <li><a href="documentation.html">
+          <span>Documentation</span>
+        </a></li>
+      </ul>
+      <p class="footer-copy">
+        Made with ☕ by <a href="https://github.com/svenliebig" target="_blank">Sven Liebig</a> · MIT License
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    function copyToClipboard(button, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        button.classList.add('copied');
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
