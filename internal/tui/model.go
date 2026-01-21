@@ -321,7 +321,7 @@ func (m Model) renderPreview() string {
 		b.WriteString(dimStyle.Render("  No files to copy"))
 		b.WriteString("\n")
 	} else {
-		lines := formatFileList(m.Plan.Items, 6)
+		lines := formatFileList(m.Plan.Items, 4)
 		for _, line := range lines {
 			b.WriteString("  ")
 			b.WriteString(line)
