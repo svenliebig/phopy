@@ -57,6 +57,7 @@ brews:
     repository:
       owner: svenliebig
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/svenliebig/phopy"
     description: "A photo copy tool that organizes RAW and JPEG files"
     license: "MIT"
