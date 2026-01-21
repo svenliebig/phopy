@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/svenliebig/phopy/compare/v1.6.0...v1.6.1) (2026-01-21)
+
+
+### Bug Fixes
+
+* homebrew tap release ([cb3a4d8](https://github.com/svenliebig/phopy/commit/cb3a4d8ccd0738276384fa52099b3568f411bb5f))
+
 ## [1.6.0](https://github.com/svenliebig/phopy/compare/v1.5.0...v1.6.0) (2026-01-21)
 
 
