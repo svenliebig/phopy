@@ -18,6 +18,8 @@ builds:
   - id: phopy
     main: ./cmd/phopy
     binary: phopy
+    ldflags:
+      - -s -w -X main.version={{.Version}}
     goos:
       - linux
       - darwin

@@ -20,6 +20,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is set at build time via ldflags
+var version = "dev"
+
 func main() {
 	cmd := newRootCmd()
 	if err := cmd.Execute(); err != nil {
@@ -64,6 +67,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.untilDate, "until", "u", "", "End date (YYYY-MM-DD) (env: PHOPY_UNTIL, PHOPY_END_DATE)")
 
 	cmd.AddCommand(newCompletionCmd())
+	cmd.AddCommand(newVersionCmd())
 
 	return cmd
 }
@@ -219,6 +223,17 @@ func newCompletionCmd() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the version of phopy",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println(version)
+		},
+	}
 }
 
 func exitWithError(err error) {
