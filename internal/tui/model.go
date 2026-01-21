@@ -367,6 +367,8 @@ func (m Model) renderSummary() string {
 	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("JPEG files:"), jpegFileStyle.Render(jpegStat)))
 	dimStyle := lipgloss.NewStyle().Foreground(dimTextColor)
 	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Skipped JPEGs:"), dimStyle.Render(fmt.Sprintf("%s %d", iconSkipped, m.Plan.SkippedJPEGs))))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Skipped RAWs (date):"), dimStyle.Render(fmt.Sprintf("%s %d", iconSkipped, m.Plan.SkippedRAWsDate))))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Skipped RAWs (dupl):"), dimStyle.Render(fmt.Sprintf("%s %d", iconSkipped, m.Plan.SkippedRAWsDupl))))
 
 	if m.Plan.RawOverrides+m.Plan.JpegOverrides > 0 {
 		overrideCount := m.Plan.RawOverrides + m.Plan.JpegOverrides

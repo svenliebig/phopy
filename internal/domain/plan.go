@@ -8,14 +8,16 @@ type CopyItem struct {
 }
 
 type CopyPlan struct {
-	Items         []CopyItem
-	OverrideItems []CopyItem
-	SkippedJPEGs  int
-	RangeStart    *time.Time
-	RangeEnd      *time.Time
-	RawCount      int
-	JpegCount     int
-	RawOverrides  int
-	JpegOverrides int
-	Warnings      []string
+	Items               []CopyItem
+	OverrideItems       []CopyItem
+	SkippedJPEGs        int
+	SkippedRAWsDate     int
+	SkippedRAWsDupl     int
+	RangeStart          *time.Time
+	RangeEnd            *time.Time
+	RawCount            int
+	JpegCount           int
+	RawOverrides        int
+	JpegOverrides       int
+	Warnings            []string
 }

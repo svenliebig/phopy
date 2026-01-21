@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"phopy/internal/domain"
@@ -18,11 +19,27 @@ import (
 type ProgressFunc func(current, total int)
 
 type Planner struct {
-	FS          FileSystem
-	Exif        ExifReader
-	ExifWorkers int
-	Logger      logging.Logger
-	OnProgress  ProgressFunc
+	FS            FileSystem
+	Exif          ExifReader
+	ExifWorkers   int
+	Logger        logging.Logger
+	OnProgress    ProgressFunc
+	AllowOverride bool
+}
+
+// shouldIncludeSource checks if a source file should be included in the plan.
+// Returns false if the target file already exists and AllowOverride is false.
+func (p *Planner) shouldIncludeSource(sourcePath, sourceDir, targetDir string) bool {
+	if p.AllowOverride {
+		return true
+	}
+	rel, err := filepath.Rel(sourceDir, sourcePath)
+	if err != nil {
+		return true // fallback to include
+	}
+	targetPath := filepath.Join(targetDir, rel)
+	exists, _ := p.FS.Exists(targetPath)
+	return !exists
 }
 
 func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDate, endDate *time.Time) (domain.CopyPlan, error) {
@@ -33,7 +50,7 @@ func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDa
 	stop := p.Logger.Measure("Planning copy")
 	defer stop()
 
-	metas, warnings, err := p.scan(ctx, sourceDir, startDate, endDate)
+	metas, warnings, skippedJPEGs, skippedRAWsDate, skippedRAWsDupl, err := p.scan(ctx, sourceDir, targetDir, startDate, endDate)
 	if err != nil {
 		return domain.CopyPlan{}, err
 	}
@@ -46,24 +63,11 @@ func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDa
 		return metas[i].TakenAt.Before(metas[j].TakenAt)
 	})
 
-	rawByBase := make(map[string]bool, len(metas))
-	for _, meta := range metas {
-		if meta.IsRAW {
-			rawByBase[meta.BaseName] = true
-		}
-	}
-
 	var items []domain.CopyItem
-	skippedJPEGs := 0
 	rawCount := 0
 	jpegCount := 0
 
 	for _, meta := range metas {
-		if meta.IsJPEG && rawByBase[meta.BaseName] {
-			skippedJPEGs++
-			continue
-		}
-
 		targetPath := filepath.Join(targetDir, meta.RelativePath)
 		items = append(items, domain.CopyItem{
 			FileMeta:   meta,
@@ -77,46 +81,55 @@ func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDa
 		}
 	}
 
+	// Only detect overrides when AllowOverride is true
 	var overrides []domain.CopyItem
 	rawOverrides := 0
 	jpegOverrides := 0
-	for _, item := range items {
-		exists, err := p.FS.Exists(item.TargetPath)
-		if err != nil {
-			return domain.CopyPlan{}, err
-		}
-		if exists {
-			overrides = append(overrides, item)
-			if item.FileMeta.IsRAW {
-				rawOverrides++
-			} else if item.FileMeta.IsJPEG {
-				jpegOverrides++
+	if p.AllowOverride {
+		for _, item := range items {
+			exists, err := p.FS.Exists(item.TargetPath)
+			if err != nil {
+				return domain.CopyPlan{}, err
+			}
+			if exists {
+				overrides = append(overrides, item)
+				if item.FileMeta.IsRAW {
+					rawOverrides++
+				} else if item.FileMeta.IsJPEG {
+					jpegOverrides++
+				}
 			}
 		}
 	}
 
 	rangeStart, rangeEnd := deriveRange(items, startDate, endDate)
-	p.Logger.Verbosef("Planned %d items (%d RAW, %d JPEG), %d JPEGs skipped, %d overrides", len(items), rawCount, jpegCount, skippedJPEGs, rawOverrides+jpegOverrides)
+	p.Logger.Verbosef("Planned %d items (%d RAW, %d JPEG), %d JPEGs skipped, %d RAWs skipped (date), %d RAWs skipped (dupl), %d overrides", len(items), rawCount, jpegCount, skippedJPEGs, skippedRAWsDate, skippedRAWsDupl, rawOverrides+jpegOverrides)
 
 	return domain.CopyPlan{
-		Items:         items,
-		OverrideItems: overrides,
-		SkippedJPEGs:  skippedJPEGs,
-		RangeStart:    rangeStart,
-		RangeEnd:      rangeEnd,
-		RawCount:      rawCount,
-		JpegCount:     jpegCount,
-		RawOverrides:  rawOverrides,
-		JpegOverrides: jpegOverrides,
-		Warnings:      warnings,
+		Items:           items,
+		OverrideItems:   overrides,
+		SkippedJPEGs:    skippedJPEGs,
+		SkippedRAWsDate: skippedRAWsDate,
+		SkippedRAWsDupl: skippedRAWsDupl,
+		RangeStart:      rangeStart,
+		RangeEnd:        rangeEnd,
+		RawCount:        rawCount,
+		JpegCount:       jpegCount,
+		RawOverrides:    rawOverrides,
+		JpegOverrides:   jpegOverrides,
+		Warnings:        warnings,
 	}, nil
 }
 
-func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate *time.Time) ([]domain.FileMeta, []string, error) {
+func (p *Planner) scan(ctx context.Context, sourceDir, targetDir string, startDate, endDate *time.Time) ([]domain.FileMeta, []string, int, int, int, error) {
 	stop := p.Logger.Measure("Scanning source directory")
 	defer stop()
 
-	var paths []string
+	// Phase 1: Walk directory and separate RAW and JPEG paths, build RAW base names set
+	var rawPaths []string
+	var jpegPaths []string
+	rawBaseNames := make(map[string]bool)
+
 	err := p.FS.WalkDir(sourceDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -125,17 +138,56 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 			return nil
 		}
 		ext := filepath.Ext(d.Name())
-		if !domain.IsRawExtension(ext) && !domain.IsJpegExtension(ext) {
-			return nil
+		name := d.Name()
+		baseName := strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
+
+		if domain.IsRawExtension(ext) {
+			rawPaths = append(rawPaths, path)
+			rawBaseNames[baseName] = true
+		} else if domain.IsJpegExtension(ext) {
+			jpegPaths = append(jpegPaths, path)
 		}
-		paths = append(paths, path)
 		return nil
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, 0, 0, err
 	}
-	p.Logger.Verbosef("Found %d candidate files in %s", len(paths), sourceDir)
 
+	// Phase 2: Filter paths based on target existence and RAW counterparts
+	var pathsToProcess []string
+	skippedJPEGs := 0
+	skippedRAWsDupl := 0
+
+	// Add RAW files that should be included
+	for _, path := range rawPaths {
+		if p.shouldIncludeSource(path, sourceDir, targetDir) {
+			pathsToProcess = append(pathsToProcess, path)
+		} else {
+			skippedRAWsDupl++
+		}
+	}
+
+	// Add JPEG files that should be included (no RAW counterpart and target doesn't exist)
+	for _, path := range jpegPaths {
+		name := filepath.Base(path)
+		baseName := strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
+
+		if rawBaseNames[baseName] {
+			// Skip JPEG because RAW exists
+			skippedJPEGs++
+			continue
+		}
+
+		if p.shouldIncludeSource(path, sourceDir, targetDir) {
+			pathsToProcess = append(pathsToProcess, path)
+		}
+	}
+
+	totalFound := len(rawPaths) + len(jpegPaths)
+	p.Logger.Verbosef("Found %d candidate files in %s (%d RAW, %d JPEG)", totalFound, sourceDir, len(rawPaths), len(jpegPaths))
+	p.Logger.Verbosef("Processing %d files after filtering (%d JPEGs skipped for RAW, %d RAWs skipped for duplicate)", len(pathsToProcess), skippedJPEGs, skippedRAWsDupl)
+
+	// Phase 3: Process remaining files with EXIF workers
 	workerCount := p.ExifWorkers
 	if workerCount <= 0 {
 		workerCount = runtime.NumCPU()
@@ -146,10 +198,11 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 	p.Logger.Verbosef("Using %d EXIF workers", workerCount)
 
 	type result struct {
-		meta    domain.FileMeta
-		warning string
-		skip    bool
-		err     error
+		meta        domain.FileMeta
+		warning     string
+		skip        bool
+		skipRAWDate bool
+		err         error
 	}
 
 	jobs := make(chan string)
@@ -161,6 +214,16 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 				info, statErr := p.FS.Stat(path)
 				if statErr != nil {
 					results <- result{err: statErr}
+					continue
+				}
+
+				ext := filepath.Ext(path)
+				isRAW := domain.IsRawExtension(ext)
+
+				// Early exit: if ModTime is before startDate, EXIF date will also be before
+				// (EXIF date is typically <= ModTime in real photo workflows)
+				if startDate != nil && info.ModTime().Before(*startDate) {
+					results <- result{skip: true, skipRAWDate: isRAW}
 					continue
 				}
 
@@ -176,11 +239,11 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 				}
 
 				if startDate != nil && takenAt.Before(*startDate) {
-					results <- result{skip: true}
+					results <- result{skip: true, skipRAWDate: isRAW}
 					continue
 				}
 				if endDate != nil && takenAt.After(*endDate) {
-					results <- result{skip: true}
+					results <- result{skip: true, skipRAWDate: isRAW}
 					continue
 				}
 
@@ -199,7 +262,7 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 
 	go func() {
 		defer close(jobs)
-		for _, path := range paths {
+		for _, path := range pathsToProcess {
 			select {
 			case <-ctx.Done():
 				return
@@ -210,16 +273,20 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 
 	var metas []domain.FileMeta
 	var warnings []string
-	total := len(paths)
-	for i := range paths {
+	skippedRAWsDate := 0
+	total := len(pathsToProcess)
+	for i := range pathsToProcess {
 		res := <-results
 		if res.err != nil {
-			return nil, nil, res.err
+			return nil, nil, 0, 0, 0, res.err
 		}
 		if res.warning != "" {
 			warnings = append(warnings, res.warning)
 		}
 		if res.skip {
+			if res.skipRAWDate {
+				skippedRAWsDate++
+			}
 			// Still report progress for skipped files
 			if p.OnProgress != nil {
 				p.OnProgress(i+1, total)
@@ -234,7 +301,7 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 		}
 	}
 
-	return metas, warnings, nil
+	return metas, warnings, skippedJPEGs, skippedRAWsDate, skippedRAWsDupl, nil
 }
 
 func deriveRange(items []domain.CopyItem, startDate, endDate *time.Time) (*time.Time, *time.Time) {

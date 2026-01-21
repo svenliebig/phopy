@@ -35,6 +35,7 @@ type cliOptions struct {
 	targetDir string
 	dryRun    bool
 	verbose   bool
+	override  bool
 	fromDate  string
 	untilDate string
 }
@@ -58,6 +59,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.targetDir, "target", "t", "", "Target directory to copy to (env: PHOPY_TARGET_DIR)")
 	cmd.Flags().BoolVarP(&opts.dryRun, "dry-run", "d", false, "Dry run (no copy)")
 	cmd.Flags().BoolVarP(&opts.verbose, "verbose", "v", false, "Verbose output (env: PHOPY_VERBOSE)")
+	cmd.Flags().BoolVarP(&opts.override, "override", "o", false, "Allow overwriting existing files in target directory")
 	cmd.Flags().StringVarP(&opts.fromDate, "from", "f", "", "Start date (YYYY-MM-DD) (env: PHOPY_FROM, PHOPY_START_DATE)")
 	cmd.Flags().StringVarP(&opts.untilDate, "until", "u", "", "End date (YYYY-MM-DD) (env: PHOPY_UNTIL, PHOPY_END_DATE)")
 
@@ -72,6 +74,7 @@ func run(ctx context.Context, opts cliOptions) error {
 		TargetDir: opts.targetDir,
 		DryRun:    opts.dryRun,
 		Verbose:   opts.verbose,
+		Override:  opts.override,
 		FromDate:  opts.fromDate,
 		UntilDate: opts.untilDate,
 	})
@@ -103,9 +106,10 @@ func run(ctx context.Context, opts cliOptions) error {
 
 	// Create planner with progress callback
 	planner := app.Planner{
-		FS:     filesystem,
-		Exif:   exifReader,
-		Logger: logger,
+		FS:            filesystem,
+		Exif:          exifReader,
+		Logger:        logger,
+		AllowOverride: cfg.Override,
 		OnProgress: func(current, total int) {
 			p.Send(tui.ScanProgressMsg{Current: current, Total: total})
 		},

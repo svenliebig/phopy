@@ -12,6 +12,7 @@ type Config struct {
 	TargetDir string
 	DryRun    bool
 	Verbose   bool
+	Override  bool
 	StartDate *time.Time
 	EndDate   *time.Time
 }
@@ -21,6 +22,7 @@ type Options struct {
 	TargetDir string
 	DryRun    bool
 	Verbose   bool
+	Override  bool
 	FromDate  string
 	UntilDate string
 }
@@ -31,6 +33,7 @@ func FromOptions(opts Options) (Config, error) {
 		TargetDir: opts.TargetDir,
 		DryRun:    opts.DryRun,
 		Verbose:   opts.Verbose,
+		Override:  opts.Override,
 	}
 	fromDate := strings.TrimSpace(opts.FromDate)
 	untilDate := strings.TrimSpace(opts.UntilDate)

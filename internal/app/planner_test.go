@@ -68,6 +68,27 @@ func (m mockExif) DateTimeOriginal(ctx context.Context, path string) (time.Time,
 	return time.Time{}, errors.New("missing exif")
 }
 
+// trackingExif records which files had EXIF read
+type trackingExif struct {
+	timestamps map[string]time.Time
+	called     map[string]bool
+}
+
+func newTrackingExif(timestamps map[string]time.Time) *trackingExif {
+	return &trackingExif{
+		timestamps: timestamps,
+		called:     make(map[string]bool),
+	}
+}
+
+func (m *trackingExif) DateTimeOriginal(ctx context.Context, path string) (time.Time, error) {
+	m.called[path] = true
+	if ts, ok := m.timestamps[path]; ok {
+		return ts, nil
+	}
+	return time.Time{}, errors.New("missing exif")
+}
+
 type mockDirEntry struct {
 	name  string
 	isDir bool
@@ -139,8 +160,9 @@ func TestPlannerDetectsOverrides(t *testing.T) {
 	}
 
 	planner := Planner{
-		FS:   mock,
-		Exif: mockExif{timestamps: map[string]time.Time{rawPath: now}},
+		FS:            mock,
+		Exif:          mockExif{timestamps: map[string]time.Time{rawPath: now}},
+		AllowOverride: true, // Enable override mode to detect existing files
 	}
 
 	plan, err := planner.Plan(context.Background(), sourceDir, targetDir, nil, nil)
@@ -152,6 +174,51 @@ func TestPlannerDetectsOverrides(t *testing.T) {
 	}
 	if plan.RawOverrides != 1 {
 		t.Fatalf("expected 1 raw override, got %d", plan.RawOverrides)
+	}
+}
+
+func TestPlannerSkipsExistingWhenOverrideFalse(t *testing.T) {
+	sourceDir := "/source"
+	targetDir := "/target"
+	rawPath1 := filepath.Join(sourceDir, "DSC0001.ARW")
+	rawPath2 := filepath.Join(sourceDir, "DSC0002.ARW")
+	targetPath1 := filepath.Join(targetDir, "DSC0001.ARW")
+
+	now := time.Date(2024, 10, 2, 15, 2, 0, 0, time.Local)
+	mock := mockFS{
+		entries: []mockEntry{
+			{path: rawPath1, modTime: now},
+			{path: rawPath2, modTime: now},
+		},
+		exists: map[string]bool{
+			targetPath1: true, // DSC0001.ARW already exists in target
+		},
+	}
+
+	planner := Planner{
+		FS:            mock,
+		Exif:          mockExif{timestamps: map[string]time.Time{rawPath1: now, rawPath2: now}},
+		AllowOverride: false, // Default: skip existing files
+	}
+
+	plan, err := planner.Plan(context.Background(), sourceDir, targetDir, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Only DSC0002.ARW should be included (DSC0001.ARW skipped because target exists)
+	if len(plan.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(plan.Items))
+	}
+	if plan.Items[0].FileMeta.Name != "DSC0002.ARW" {
+		t.Fatalf("expected DSC0002.ARW, got %s", plan.Items[0].FileMeta.Name)
+	}
+	// No overrides should be detected when AllowOverride is false
+	if len(plan.OverrideItems) != 0 {
+		t.Fatalf("expected 0 overrides, got %d", len(plan.OverrideItems))
+	}
+	// Should track skipped RAW as duplicate
+	if plan.SkippedRAWsDupl != 1 {
+		t.Fatalf("expected 1 skipped RAW duplicate, got %d", plan.SkippedRAWsDupl)
 	}
 }
 
@@ -182,6 +249,10 @@ func TestPlannerFiltersByDateRange(t *testing.T) {
 	if len(plan.Items) != 0 {
 		t.Fatalf("expected 0 items, got %d", len(plan.Items))
 	}
+	// Should track skipped RAW as date-filtered
+	if plan.SkippedRAWsDate != 1 {
+		t.Fatalf("expected 1 skipped RAW date, got %d", plan.SkippedRAWsDate)
+	}
 }
 
 func TestDeriveRangeFallsBackToItems(t *testing.T) {
@@ -198,5 +269,63 @@ func TestDeriveRangeFallsBackToItems(t *testing.T) {
 	}
 	if !start.Equal(now) || !end.Equal(later) {
 		t.Fatalf("unexpected range: %v - %v", start, end)
+	}
+}
+
+func TestPlannerSkipsExifReadWhenModTimeBeforeStartDate(t *testing.T) {
+	sourceDir := "/source"
+	targetDir := "/target"
+	oldPath := filepath.Join(sourceDir, "DSC0001.ARW")  // ModTime before startDate
+	newPath := filepath.Join(sourceDir, "DSC0002.ARW")  // ModTime after startDate
+
+	oldTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.Local)
+	newTime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.Local)
+	startDate := time.Date(2024, 6, 1, 0, 0, 0, 0, time.Local)
+
+	mock := mockFS{
+		entries: []mockEntry{
+			{path: oldPath, modTime: oldTime}, // ModTime is 2024-01-01, before startDate
+			{path: newPath, modTime: newTime}, // ModTime is 2024-06-15, after startDate
+		},
+		exists: map[string]bool{},
+	}
+
+	// Use tracking mock to verify which files have EXIF read
+	exifMock := newTrackingExif(map[string]time.Time{
+		oldPath: oldTime,
+		newPath: newTime,
+	})
+
+	planner := Planner{
+		FS:   mock,
+		Exif: exifMock,
+	}
+
+	plan, err := planner.Plan(context.Background(), sourceDir, targetDir, &startDate, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Only DSC0002.ARW should be included
+	if len(plan.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(plan.Items))
+	}
+	if plan.Items[0].FileMeta.Name != "DSC0002.ARW" {
+		t.Fatalf("expected DSC0002.ARW, got %s", plan.Items[0].FileMeta.Name)
+	}
+
+	// Verify EXIF was NOT read for the old file (optimization)
+	if exifMock.called[oldPath] {
+		t.Fatalf("EXIF should NOT have been read for %s (ModTime before startDate)", oldPath)
+	}
+
+	// Verify EXIF WAS read for the new file
+	if !exifMock.called[newPath] {
+		t.Fatalf("EXIF should have been read for %s", newPath)
+	}
+
+	// Should track skipped RAW as date-filtered
+	if plan.SkippedRAWsDate != 1 {
+		t.Fatalf("expected 1 skipped RAW date, got %d", plan.SkippedRAWsDate)
 	}
 }
