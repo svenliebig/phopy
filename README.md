@@ -2,6 +2,8 @@
 
 A photo copy tool for my personal opinionated needs. This tool is useful for you when you copy photos from your camera to your computer less regulary and you want a program to handle duplicates, the RAW/JPEG juggeling and specific date ranges.
 
+![showcase](./assets/phopy-showcase.gif)
+
 ## Install
 
 ### Homebrew (macOS/Linux)
