@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/svenliebig/phopy/compare/v1.4.0...v1.4.1) (2026-01-21)
+
+
+### Bug Fixes
+
+* performance optimizations for the image scanning process ([93a81a7](https://github.com/svenliebig/phopy/commit/93a81a7678b665f96b4654e5d8e371865a17e051))
+
 ## [1.4.0](https://github.com/svenliebig/phopy/compare/v1.3.0...v1.4.0) (2026-01-21)
 
 
