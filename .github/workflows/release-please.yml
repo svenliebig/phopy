@@ -15,7 +15,32 @@ jobs:
         with:
           fetch-depth: 0
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           release-type: go
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # GoReleaser needs the tag to exist locally
+      - name: Fetch new tag
+        if: steps.release.outputs.release_created == 'true'
+        run: git fetch --tags origin
+
+      - name: Checkout tagged commit
+        if: steps.release.outputs.release_created == 'true'
+        run: git checkout ${{ steps.release.outputs.tag_name }}
+
+      - name: Set up Go
+        if: steps.release.outputs.release_created == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run GoReleaser
+        if: steps.release.outputs.release_created == 'true'
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: v1.26.2
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
