@@ -89,13 +89,6 @@ func run(ctx context.Context, opts cliOptions) error {
 		return appErrors.Wrap(appErrors.NotFound, "stat", cfg.SourceDir, err)
 	}
 
-	// Create planner
-	planner := app.Planner{
-		FS:     filesystem,
-		Exif:   exifReader,
-		Logger: logger,
-	}
-
 	// Create TUI config
 	tuiConfig := tui.Config{
 		SourceDir: cfg.SourceDir,
@@ -104,9 +97,19 @@ func run(ctx context.Context, opts cliOptions) error {
 		Verbose:   cfg.Verbose,
 	}
 
-	// Create the TUI model
+	// Create the TUI model and program early so we can send progress updates
 	m := tui.NewModel(tuiConfig)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
+
+	// Create planner with progress callback
+	planner := app.Planner{
+		FS:     filesystem,
+		Exif:   exifReader,
+		Logger: logger,
+		OnProgress: func(current, total int) {
+			p.Send(tui.ScanProgressMsg{Current: current, Total: total})
+		},
+	}
 
 	// Channels for communication
 	planDone := make(chan struct{})

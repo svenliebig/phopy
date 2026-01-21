@@ -14,11 +14,15 @@ import (
 	"phopy/internal/logging"
 )
 
+// ProgressFunc is called during scanning to report progress
+type ProgressFunc func(current, total int)
+
 type Planner struct {
 	FS          FileSystem
 	Exif        ExifReader
 	ExifWorkers int
 	Logger      logging.Logger
+	OnProgress  ProgressFunc
 }
 
 func (p *Planner) Plan(ctx context.Context, sourceDir, targetDir string, startDate, endDate *time.Time) (domain.CopyPlan, error) {
@@ -206,7 +210,8 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 
 	var metas []domain.FileMeta
 	var warnings []string
-	for range paths {
+	total := len(paths)
+	for i := range paths {
 		res := <-results
 		if res.err != nil {
 			return nil, nil, res.err
@@ -215,9 +220,18 @@ func (p *Planner) scan(ctx context.Context, sourceDir string, startDate, endDate
 			warnings = append(warnings, res.warning)
 		}
 		if res.skip {
+			// Still report progress for skipped files
+			if p.OnProgress != nil {
+				p.OnProgress(i+1, total)
+			}
 			continue
 		}
 		metas = append(metas, res.meta)
+
+		// Report progress
+		if p.OnProgress != nil {
+			p.OnProgress(i+1, total)
+		}
 	}
 
 	return metas, warnings, nil

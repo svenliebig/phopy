@@ -30,6 +30,10 @@ type (
 	PlanReadyMsg struct {
 		Plan domain.CopyPlan
 	}
+	ScanProgressMsg struct {
+		Current int
+		Total   int
+	}
 	CopyProgressMsg struct {
 		Current int
 		Total   int
@@ -59,6 +63,8 @@ type Model struct {
 	Plan             domain.CopyPlan
 	spinner          spinner.Model
 	progress         progress.Model
+	scanCurrent      int
+	scanTotal        int
 	copyProgress     int
 	copyTotal        int
 	currentFile      string
@@ -136,6 +142,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 		}
+
+	case ScanProgressMsg:
+		m.scanCurrent = msg.Current
+		m.scanTotal = msg.Total
+		return m, nil
 
 	case PlanReadyMsg:
 		m.Plan = msg.Plan
@@ -260,6 +271,20 @@ func (m Model) renderHeader() string {
 }
 
 func (m Model) renderScanning() string {
+	if m.scanTotal > 0 {
+		percent := float64(m.scanCurrent) / float64(m.scanTotal)
+		progressBar := m.progress.ViewAs(percent)
+
+		countStyle := lipgloss.NewStyle().Foreground(primaryColor).Bold(true)
+		percentStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+
+		return fmt.Sprintf("%s Scanning photos...\n\n  %s\n  %s %s",
+			m.spinner.View(),
+			progressBar,
+			countStyle.Render(fmt.Sprintf("%d/%d", m.scanCurrent, m.scanTotal)),
+			percentStyle.Render(fmt.Sprintf("(%.0f%%)", percent*100)),
+		)
+	}
 	return fmt.Sprintf("%s Scanning photos...", m.spinner.View())
 }
 
