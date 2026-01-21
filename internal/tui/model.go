@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -286,8 +287,8 @@ func (m Model) renderHeader() string {
 		title,
 		subtitle,
 		"",
-		dimStyle.Render(fmt.Sprintf("%s Source: %s", iconFolder, m.config.SourceDir)),
-		dimStyle.Render(fmt.Sprintf("%s Target: %s", iconFolder, m.config.TargetDir)),
+		dimStyle.Render(fmt.Sprintf("%s Source: %s", iconFolder, shortenPath(m.config.SourceDir))),
+		dimStyle.Render(fmt.Sprintf("%s Target: %s", iconFolder, shortenPath(m.config.TargetDir))),
 	)
 }
 
@@ -565,4 +566,16 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// shortenPath replaces the home directory prefix with ~ for display
+func shortenPath(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
