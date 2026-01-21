@@ -1,8 +1,16 @@
 # Phopy
 
-A photo copy tool for my personal needs.
+A photo copy tool for my personal opinionated needs. This tool is useful for you when you copy photos from your camera to your computer less regulary and you want a program to handle duplicates, the RAW/JPEG juggeling and specific date ranges.
 
 ## Install
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew install svenliebig/tap/phopy
+```
+
+### Manual
 
 Download the latest release from the [GitHub Releases page](https://github.com/svenliebig/phopy/releases) and move it into your PATH.
 
@@ -32,6 +40,7 @@ You can pass phopy configuration directly into the command, some also support EN
 | `--verbose` or `-v`     | Whether to print verbose output.                                              | PHOPY_VERBOSE       |
 | `--from` or `-f`        | The start date to copy from when the picture was taken, skip earlier.         | PHOPY_FROM          |
 | `--until` or `-u`       | The end date to copy to when the picture was taken, skip later.               | PHOPY_UNTIL         |
+| `--override` or `-o`    | Whether to override files that already exist in the target directory.         |                     |
 
 ## Usage
 

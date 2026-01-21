@@ -52,5 +52,16 @@ changelog:
     exclude:
       - "^Merge"
 
+brews:
+  - name: phopy
+    repository:
+      owner: svenliebig
+      name: homebrew-tap
+    homepage: "https://github.com/svenliebig/phopy"
+    description: "A photo copy tool that organizes RAW and JPEG files"
+    license: "MIT"
+    install: |
+      bin.install "phopy"
+
 release:
   footer: ""
