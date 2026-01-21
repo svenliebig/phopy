@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0](https://github.com/svenliebig/phopy/compare/v1.4.1...v1.5.0) (2026-01-21)
+
+
+### Features
+
+* improve copy ui and result screen ([0de64bb](https://github.com/svenliebig/phopy/commit/0de64bbc7defb58d6be1955fc53b99f9951878d9))
+
+
+### Bug Fixes
+
+* decrease the selected file preview to four files ([ba2335b](https://github.com/svenliebig/phopy/commit/ba2335b669b0c18c53a2559522d4ccb2cce24306))
+* show the tilde for home directories ([b0a3c40](https://github.com/svenliebig/phopy/commit/b0a3c40eb9fdc30c3170023bdd8780b3b0798e23))
+
 ## [1.4.1](https://github.com/svenliebig/phopy/compare/v1.4.0...v1.4.1) (2026-01-21)
 
 
