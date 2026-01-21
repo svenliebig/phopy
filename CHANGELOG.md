@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/svenliebig/phopy/compare/v1.3.0...v1.4.0) (2026-01-21)
+
+
+### Features
+
+* add a progressbar to the scanning process ([4912fb3](https://github.com/svenliebig/phopy/commit/4912fb35ac54d612b646578071d81ea107d63157))
+
 ## [1.3.0](https://github.com/svenliebig/phopy/compare/v1.2.0...v1.3.0) (2026-01-21)
 
 
