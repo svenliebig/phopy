@@ -71,8 +71,10 @@ type Model struct {
 	progress           progress.Model
 	scanCurrent        int
 	scanTotal          int
+	scanStartTime      time.Time
 	copyProgress       int
 	copyTotal          int
+	copyStartTime      time.Time
 	currentFile        string
 	confirmSelection   bool // true = yes, false = no
 	OverridesConfirmed int
@@ -150,6 +152,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case ScanProgressMsg:
+		// Track start time on first progress update
+		if m.scanStartTime.IsZero() && msg.Total > 0 {
+			m.scanStartTime = time.Now()
+		}
 		m.scanCurrent = msg.Current
 		m.scanTotal = msg.Total
 		return m, nil
@@ -182,6 +188,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case CopyProgressMsg:
+		// Track start time on first progress update
+		if m.copyStartTime.IsZero() && msg.Total > 0 {
+			m.copyStartTime = time.Now()
+		}
 		m.copyProgress = msg.Current
 		m.copyTotal = msg.Total
 		m.currentFile = msg.File
@@ -299,12 +309,20 @@ func (m Model) renderScanning() string {
 
 		countStyle := lipgloss.NewStyle().Foreground(primaryColor).Bold(true)
 		percentStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+		etaStyle := lipgloss.NewStyle().Foreground(dimTextColor)
 
-		return fmt.Sprintf("%s Scanning photos...\n\n  %s\n  %s %s",
+		eta := estimateRemainingTime(m.scanStartTime, m.scanCurrent, m.scanTotal)
+		etaText := ""
+		if eta != "" {
+			etaText = etaStyle.Render(fmt.Sprintf(" • ~%s remaining", eta))
+		}
+
+		return fmt.Sprintf("%s Scanning photos...\n\n  %s\n  %s %s%s",
 			m.spinner.View(),
 			progressBar,
 			countStyle.Render(fmt.Sprintf("%d/%d", m.scanCurrent, m.scanTotal)),
 			percentStyle.Render(fmt.Sprintf("(%.0f%%)", percent*100)),
+			etaText,
 		)
 	}
 	return fmt.Sprintf("%s Scanning photos...", m.spinner.View())
@@ -444,10 +462,18 @@ func (m Model) renderExecution() string {
 
 	countStyle := lipgloss.NewStyle().Foreground(primaryColor).Bold(true)
 	percentStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+	etaStyle := lipgloss.NewStyle().Foreground(dimTextColor)
 
-	b.WriteString(fmt.Sprintf("  %s %s\n",
+	eta := estimateRemainingTime(m.copyStartTime, m.copyProgress, m.copyTotal)
+	etaText := ""
+	if eta != "" {
+		etaText = etaStyle.Render(fmt.Sprintf(" • ~%s remaining", eta))
+	}
+
+	b.WriteString(fmt.Sprintf("  %s %s%s\n",
 		countStyle.Render(fmt.Sprintf("%d/%d files", m.copyProgress, m.copyTotal)),
 		percentStyle.Render(fmt.Sprintf("(%.0f%%)", percent*100)),
+		etaText,
 	))
 
 	if m.currentFile != "" {
@@ -566,6 +592,51 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// estimateRemainingTime calculates the estimated remaining time based on progress
+func estimateRemainingTime(startTime time.Time, current, total int) string {
+	if current <= 0 || total <= 0 || startTime.IsZero() {
+		return ""
+	}
+
+	elapsed := time.Since(startTime)
+	if elapsed < time.Millisecond*100 {
+		// Not enough data yet
+		return ""
+	}
+
+	// Calculate rate and remaining time
+	rate := float64(current) / elapsed.Seconds()
+	if rate <= 0 {
+		return ""
+	}
+
+	remaining := float64(total-current) / rate
+	remainingDuration := time.Duration(remaining * float64(time.Second))
+
+	return formatDuration(remainingDuration)
+}
+
+// formatDuration formats a duration into a human-readable string
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return "<1s"
+	}
+
+	d = d.Round(time.Second)
+
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }
 
 // shortenPath replaces the home directory prefix with ~ for display
