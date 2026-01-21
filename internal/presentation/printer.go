@@ -71,6 +71,8 @@ func (p Printer) printSummary(plan domain.CopyPlan, dryRun bool, overridesConfir
 	}
 
 	fmt.Fprintf(p.Writer, "Skipped %d JPEGs because their RAW files existed.\n", plan.SkippedJPEGs)
+	fmt.Fprintf(p.Writer, "Skipped %d RAWs (date filter).\n", plan.SkippedRAWsDate)
+	fmt.Fprintf(p.Writer, "Skipped %d RAWs (duplicate).\n", plan.SkippedRAWsDupl)
 
 	overrideCount := plan.RawOverrides + plan.JpegOverrides
 	if dryRun {

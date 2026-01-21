@@ -48,32 +48,37 @@ type (
 	tickMsg time.Time
 )
 
+// ExecuteCopyFunc is called to start the copy operation
+// It should run the copy in a goroutine and send progress/done messages
+type ExecuteCopyFunc func(plan domain.CopyPlan, includeOverrides bool) tea.Cmd
+
 // Config for the TUI
 type Config struct {
-	SourceDir string
-	TargetDir string
-	DryRun    bool
-	Verbose   bool
+	SourceDir   string
+	TargetDir   string
+	DryRun      bool
+	Verbose     bool
+	ExecuteCopy ExecuteCopyFunc
 }
 
 // Model is the main TUI model
 type Model struct {
-	config           Config
-	Phase            Phase
-	Plan             domain.CopyPlan
-	spinner          spinner.Model
-	progress         progress.Model
-	scanCurrent      int
-	scanTotal        int
-	copyProgress     int
-	copyTotal        int
-	currentFile      string
-	confirmSelection bool // true = yes, false = no
+	config             Config
+	Phase              Phase
+	Plan               domain.CopyPlan
+	spinner            spinner.Model
+	progress           progress.Model
+	scanCurrent        int
+	scanTotal          int
+	copyProgress       int
+	copyTotal          int
+	currentFile        string
+	confirmSelection   bool // true = yes, false = no
 	OverridesConfirmed int
-	Err              error
-	Quitting         bool
-	width            int
-	height           int
+	Err                error
+	Quitting           bool
+	width              int
+	height             int
 }
 
 // NewModel creates a new TUI model
@@ -155,19 +160,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if len(m.Plan.OverrideItems) > 0 {
 			m.Phase = PhaseConfirm
 		} else {
-			// No overrides needed, ready to execute - exit TUI
-			m.Phase = PhaseDone
-			return m, tea.Quit
+			// No overrides needed, start copy immediately
+			m.Phase = PhaseExecuting
+			if m.config.ExecuteCopy != nil {
+				return m, tea.Batch(tickCmd(), m.config.ExecuteCopy(m.Plan, false))
+			}
 		}
 		return m, nil
 
 	case ConfirmMsg:
-		if msg.Confirmed {
+		includeOverrides := msg.Confirmed
+		if includeOverrides {
 			m.OverridesConfirmed = len(m.Plan.OverrideItems)
 		}
-		// After confirmation, exit TUI so main can execute the copy
-		m.Phase = PhaseDone
-		return m, tea.Quit
+		// Start copy
+		m.Phase = PhaseExecuting
+		if m.config.ExecuteCopy != nil {
+			return m, tea.Batch(tickCmd(), m.config.ExecuteCopy(m.Plan, includeOverrides))
+		}
+		return m, nil
 
 	case CopyProgressMsg:
 		m.copyProgress = msg.Current
@@ -177,7 +188,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case CopyDoneMsg:
 		m.Phase = PhaseDone
-		m.OverridesConfirmed = msg.OverridesConfirmed
+		if msg.OverridesConfirmed > 0 {
+			m.OverridesConfirmed = msg.OverridesConfirmed
+		}
 		return m, nil
 
 	case ErrorMsg:
@@ -186,7 +199,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.Phase == PhaseScanning {
+		if m.Phase == PhaseScanning || m.Phase == PhaseExecuting {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -198,9 +211,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tickMsg:
-		if m.Phase == PhaseExecuting && m.copyTotal > 0 {
-			cmd := m.progress.SetPercent(float64(m.copyProgress) / float64(m.copyTotal))
-			return m, tea.Batch(cmd, tickCmd())
+		if m.Phase == PhaseExecuting {
+			var cmds []tea.Cmd
+			if m.copyTotal > 0 {
+				cmds = append(cmds, m.progress.SetPercent(float64(m.copyProgress)/float64(m.copyTotal)))
+			}
+			cmds = append(cmds, tickCmd(), m.spinner.Tick)
+			return m, tea.Batch(cmds...)
 		}
 	}
 
@@ -232,17 +249,21 @@ func (m Model) View() string {
 	switch m.Phase {
 	case PhaseScanning:
 		b.WriteString(m.renderScanning())
-	case PhasePreview, PhaseDone:
+	case PhasePreview:
 		b.WriteString(m.renderPreview())
-		if m.Phase == PhaseDone && !m.config.DryRun {
+	case PhaseDone:
+		b.WriteString(m.renderPreview())
+		if !m.config.DryRun {
 			b.WriteString("\n")
-			b.WriteString(m.renderCompletion())
+			b.WriteString(m.renderCopyCompletion())
 		}
 	case PhaseConfirm:
 		b.WriteString(m.renderPreview())
 		b.WriteString("\n")
 		b.WriteString(m.renderConfirmPrompt())
 	case PhaseExecuting:
+		b.WriteString(m.renderPreview())
+		b.WriteString("\n")
 		b.WriteString(m.renderExecution())
 	case PhaseError:
 		b.WriteString(m.renderError())
@@ -416,29 +437,55 @@ func (m Model) renderExecution() string {
 		percent = float64(m.copyProgress) / float64(m.copyTotal)
 	}
 
+	// Spinner and progress
+	b.WriteString(fmt.Sprintf("  %s Copying...\n\n", m.spinner.View()))
 	b.WriteString(fmt.Sprintf("  %s\n", m.progress.ViewAs(percent)))
-	b.WriteString(fmt.Sprintf("  %s / %s files\n",
-		statValueStyle.Render(fmt.Sprintf("%d", m.copyProgress)),
-		statValueStyle.Render(fmt.Sprintf("%d", m.copyTotal)),
+
+	countStyle := lipgloss.NewStyle().Foreground(primaryColor).Bold(true)
+	percentStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+
+	b.WriteString(fmt.Sprintf("  %s %s\n",
+		countStyle.Render(fmt.Sprintf("%d/%d files", m.copyProgress, m.copyTotal)),
+		percentStyle.Render(fmt.Sprintf("(%.0f%%)", percent*100)),
 	))
 
 	if m.currentFile != "" {
 		b.WriteString(fmt.Sprintf("\n  %s %s\n",
 			iconArrow,
-			pathStyle.Render(m.currentFile),
+			fileNameStyle.Render(m.currentFile),
 		))
 	}
 
 	return b.String()
 }
 
-func (m Model) renderCompletion() string {
+func (m Model) renderCopyCompletion() string {
+	var b strings.Builder
+
+	b.WriteString(sectionStyle.Render("Copy Complete"))
+	b.WriteString("\n\n")
+
+	// Success message
 	icon := successStyle.Render(iconSuccess)
 	msg := successStyle.Render("Copy completed successfully!")
+	b.WriteString(fmt.Sprintf("  %s %s\n\n", icon, msg))
 
-	return highlightBoxStyle.Copy().
-		BorderForeground(secondaryColor).
-		Render(fmt.Sprintf("%s %s", icon, msg))
+	// Statistics
+	totalCopied := m.Plan.RawCount + m.Plan.JpegCount
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("RAW files copied:"), rawFileStyle.Render(fmt.Sprintf("%s %d", iconRAW, m.Plan.RawCount))))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("JPEG files copied:"), jpegFileStyle.Render(fmt.Sprintf("%s %d", iconJPEG, m.Plan.JpegCount))))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Total copied:"), statValueStyle.Render(fmt.Sprintf("%d files", totalCopied))))
+
+	if m.Plan.SkippedJPEGs > 0 {
+		dimStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+		b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Skipped JPEGs:"), dimStyle.Render(fmt.Sprintf("%s %d (RAW exists)", iconSkipped, m.Plan.SkippedJPEGs))))
+	}
+
+	if m.OverridesConfirmed > 0 {
+		b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Files overwritten:"), warningStyle.Render(fmt.Sprintf("%s %d", iconOverride, m.OverridesConfirmed))))
+	}
+
+	return b.String()
 }
 
 func (m Model) renderError() string {
@@ -460,8 +507,10 @@ func (m Model) renderHelp() string {
 	case PhaseConfirm:
 		help = "← → or y/n to select • Enter to confirm • q to quit"
 	case PhaseExecuting:
-		help = "Copying files... Press q to cancel"
-	case PhaseDone, PhaseError:
+		help = "Copying files... Please wait"
+	case PhaseDone:
+		help = "Press Enter to exit"
+	case PhaseError:
 		help = "Press Enter or q to exit"
 	}
 	return helpStyle.Render(help)

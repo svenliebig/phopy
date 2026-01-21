@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"phopy/internal/app"
 	"phopy/internal/config"
@@ -16,7 +17,6 @@ import (
 	"phopy/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -92,17 +92,63 @@ func run(ctx context.Context, opts cliOptions) error {
 		return appErrors.Wrap(appErrors.NotFound, "stat", cfg.SourceDir, err)
 	}
 
-	// Create TUI config
-	tuiConfig := tui.Config{
-		SourceDir: cfg.SourceDir,
-		TargetDir: cfg.TargetDir,
-		DryRun:    cfg.DryRun,
-		Verbose:   cfg.Verbose,
+	// We need to declare p early so we can reference it in the ExecuteCopy callback
+	var p *tea.Program
+	var pMu sync.Mutex
+
+	// Create the ExecuteCopy function that will be called by the TUI
+	executeCopy := func(plan domain.CopyPlan, includeOverrides bool) tea.Cmd {
+		return func() tea.Msg {
+			// Ensure target directory exists
+			if err := filesystem.MkdirAll(cfg.TargetDir, 0o755); err != nil {
+				return tui.ErrorMsg{Err: appErrors.Wrap(appErrors.IOFailure, "mkdir", cfg.TargetDir, err)}
+			}
+
+			// Execute the copy with progress callback
+			executor := app.Executor{
+				FS:     filesystem,
+				Logger: logger,
+				OnProgress: func(current, total int, currentFile string) {
+					pMu.Lock()
+					prog := p
+					pMu.Unlock()
+					if prog != nil {
+						prog.Send(tui.CopyProgressMsg{
+							Current: current,
+							Total:   total,
+							File:    currentFile,
+						})
+					}
+				},
+			}
+
+			if err := executor.Execute(ctx, plan, includeOverrides); err != nil {
+				return tui.ErrorMsg{Err: appErrors.Wrap(appErrors.IOFailure, "copy", cfg.TargetDir, err)}
+			}
+
+			// Signal copy is done
+			overrides := 0
+			if includeOverrides {
+				overrides = len(plan.OverrideItems)
+			}
+			return tui.CopyDoneMsg{OverridesConfirmed: overrides}
+		}
 	}
 
-	// Create the TUI model and program early so we can send progress updates
+	// Create TUI config with the ExecuteCopy callback
+	tuiConfig := tui.Config{
+		SourceDir:   cfg.SourceDir,
+		TargetDir:   cfg.TargetDir,
+		DryRun:      cfg.DryRun,
+		Verbose:     cfg.Verbose,
+		ExecuteCopy: executeCopy,
+	}
+
+	// Create the TUI model and program
 	m := tui.NewModel(tuiConfig)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
+	pMu.Lock()
+	p = tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
+	pMu.Unlock()
 
 	// Create planner with progress callback
 	planner := app.Planner{
@@ -115,15 +161,9 @@ func run(ctx context.Context, opts cliOptions) error {
 		},
 	}
 
-	// Channels for communication
-	planDone := make(chan struct{})
-	var plan domain.CopyPlan
-	var planErr error
-
 	// Run planning in background
 	go func() {
-		defer close(planDone)
-		plan, planErr = planner.Plan(ctx, cfg.SourceDir, cfg.TargetDir, cfg.StartDate, cfg.EndDate)
+		plan, planErr := planner.Plan(ctx, cfg.SourceDir, cfg.TargetDir, cfg.StartDate, cfg.EndDate)
 		if planErr != nil {
 			p.Send(tui.ErrorMsg{Err: appErrors.Wrap(appErrors.Internal, "plan", cfg.SourceDir, planErr)})
 			return
@@ -139,84 +179,12 @@ func run(ctx context.Context, opts cliOptions) error {
 
 	final := finalModel.(tui.Model)
 
-	// If quitting early, exit gracefully
-	if final.Quitting {
-		return nil
-	}
-
-	// Wait for planning to complete
-	<-planDone
-	if planErr != nil {
-		return appErrors.Wrap(appErrors.Internal, "plan", cfg.SourceDir, planErr)
-	}
-
-	// If dry run, we're done (TUI already showed the preview)
-	if cfg.DryRun {
-		return nil
-	}
-
-	// Check if we got the plan and handle execution
-	if final.Phase == tui.PhaseError {
+	// If there was an error in the TUI, return it
+	if final.Phase == tui.PhaseError && final.Err != nil {
 		return final.Err
 	}
 
-	// Determine if overrides were confirmed
-	includeOverrides := final.OverridesConfirmed > 0
-
-	// Ensure target directory exists
-	if err := filesystem.MkdirAll(cfg.TargetDir, 0o755); err != nil {
-		return appErrors.Wrap(appErrors.IOFailure, "mkdir", cfg.TargetDir, err)
-	}
-
-	// Execute the copy
-	executor := app.Executor{FS: filesystem, Logger: logger}
-	if err := executor.Execute(ctx, final.Plan, includeOverrides); err != nil {
-		return appErrors.Wrap(appErrors.IOFailure, "copy", cfg.TargetDir, err)
-	}
-
-	// Print completion summary
-	printCompletionSummary(final.Plan, includeOverrides)
-
 	return nil
-}
-
-func printCompletionSummary(plan domain.CopyPlan, overridesIncluded bool) {
-	successColor := lipgloss.Color("#85DCB0")
-	primaryColor := lipgloss.Color("#E8A87C")
-	dimColor := lipgloss.Color("#9CA3AF")
-
-	successStyle := lipgloss.NewStyle().
-		Foreground(successColor).
-		Bold(true)
-
-	statStyle := lipgloss.NewStyle().
-		Foreground(primaryColor)
-
-	dimStyle := lipgloss.NewStyle().
-		Foreground(dimColor)
-
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(successColor).
-		Padding(1, 2).
-		MarginTop(1)
-
-	// Build summary content
-	totalCopied := plan.RawCount + plan.JpegCount
-	content := fmt.Sprintf("%s Copy completed successfully!\n\n", successStyle.Render("✓"))
-	content += fmt.Sprintf("  %s %s\n", dimStyle.Render("RAW files:"), statStyle.Render(fmt.Sprintf("◆ %d", plan.RawCount)))
-	content += fmt.Sprintf("  %s %s\n", dimStyle.Render("JPEG files:"), statStyle.Render(fmt.Sprintf("◇ %d", plan.JpegCount)))
-	content += fmt.Sprintf("  %s %s\n", dimStyle.Render("Total:"), statStyle.Render(fmt.Sprintf("%d files", totalCopied)))
-
-	if plan.SkippedJPEGs > 0 {
-		content += fmt.Sprintf("  %s %s\n", dimStyle.Render("Skipped:"), dimStyle.Render(fmt.Sprintf("○ %d JPEGs (RAW exists)", plan.SkippedJPEGs)))
-	}
-
-	if overridesIncluded && (plan.RawOverrides+plan.JpegOverrides) > 0 {
-		content += fmt.Sprintf("  %s %s\n", dimStyle.Render("Overwritten:"), statStyle.Render(fmt.Sprintf("⚠ %d files", plan.RawOverrides+plan.JpegOverrides)))
-	}
-
-	fmt.Println(boxStyle.Render(content))
 }
 
 func isInvalidConfig(err error) bool {
