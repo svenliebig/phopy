@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0](https://github.com/svenliebig/phopy/compare/v1.6.1...v1.7.0) (2026-01-21)
+
+
+### Features
+
+* add time remaining to the progressing actions ([ee0d4c3](https://github.com/svenliebig/phopy/commit/ee0d4c30fa30a3d97ab04be734d35d7a525eb8cf))
+* add version command ([73e65ab](https://github.com/svenliebig/phopy/commit/73e65ab5afea99a8003539df0f5e510ceb4feae3))
+
+
+### Bug Fixes
+
+* add proper error handling for missing required parameters ([e391821](https://github.com/svenliebig/phopy/commit/e391821b66f36251b84df0db6295a5b44a4b5436))
+
 ## [1.6.1](https://github.com/svenliebig/phopy/compare/v1.6.0...v1.6.1) (2026-01-21)
 
 
