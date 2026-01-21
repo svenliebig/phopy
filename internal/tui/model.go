@@ -1,0 +1,492 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"phopy/internal/domain"
+
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// Phase represents the current state of the TUI
+type Phase int
+
+const (
+	PhaseScanning Phase = iota
+	PhasePreview
+	PhaseConfirm
+	PhaseExecuting
+	PhaseDone
+	PhaseError
+)
+
+// Messages for the TUI
+type (
+	PlanReadyMsg struct {
+		Plan domain.CopyPlan
+	}
+	CopyProgressMsg struct {
+		Current int
+		Total   int
+		File    string
+	}
+	CopyDoneMsg struct {
+		OverridesConfirmed int
+	}
+	ErrorMsg struct {
+		Err error
+	}
+	tickMsg time.Time
+)
+
+// Config for the TUI
+type Config struct {
+	SourceDir string
+	TargetDir string
+	DryRun    bool
+	Verbose   bool
+}
+
+// Model is the main TUI model
+type Model struct {
+	config           Config
+	Phase            Phase
+	Plan             domain.CopyPlan
+	spinner          spinner.Model
+	progress         progress.Model
+	copyProgress     int
+	copyTotal        int
+	currentFile      string
+	confirmSelection bool // true = yes, false = no
+	OverridesConfirmed int
+	Err              error
+	Quitting         bool
+	width            int
+	height           int
+}
+
+// NewModel creates a new TUI model
+func NewModel(cfg Config) Model {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = spinnerStyle
+
+	p := progress.New(
+		progress.WithDefaultGradient(),
+		progress.WithWidth(50),
+		progress.WithoutPercentage(),
+	)
+
+	return Model{
+		config:           cfg,
+		Phase:            PhaseScanning,
+		spinner:          s,
+		progress:         p,
+		confirmSelection: false, // default to No
+		width:            80,
+		height:           24,
+	}
+}
+
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick)
+}
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.progress.Width = min(msg.Width-20, 60)
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.Quitting = true
+			return m, tea.Quit
+		case "left", "h":
+			if m.Phase == PhaseConfirm {
+				m.confirmSelection = true
+			}
+		case "right", "l":
+			if m.Phase == PhaseConfirm {
+				m.confirmSelection = false
+			}
+		case "y", "Y":
+			if m.Phase == PhaseConfirm {
+				m.confirmSelection = true
+			}
+		case "n", "N":
+			if m.Phase == PhaseConfirm {
+				m.confirmSelection = false
+			}
+		case "enter":
+			if m.Phase == PhaseConfirm {
+				return m, func() tea.Msg {
+					return ConfirmMsg{Confirmed: m.confirmSelection}
+				}
+			}
+			if m.Phase == PhaseDone || m.Phase == PhaseError {
+				return m, tea.Quit
+			}
+		}
+
+	case PlanReadyMsg:
+		m.Plan = msg.Plan
+		if m.config.DryRun {
+			m.Phase = PhaseDone
+		} else if len(m.Plan.OverrideItems) > 0 {
+			m.Phase = PhaseConfirm
+		} else {
+			// No overrides needed, ready to execute - exit TUI
+			m.Phase = PhaseDone
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case ConfirmMsg:
+		if msg.Confirmed {
+			m.OverridesConfirmed = len(m.Plan.OverrideItems)
+		}
+		// After confirmation, exit TUI so main can execute the copy
+		m.Phase = PhaseDone
+		return m, tea.Quit
+
+	case CopyProgressMsg:
+		m.copyProgress = msg.Current
+		m.copyTotal = msg.Total
+		m.currentFile = msg.File
+		return m, nil
+
+	case CopyDoneMsg:
+		m.Phase = PhaseDone
+		m.OverridesConfirmed = msg.OverridesConfirmed
+		return m, nil
+
+	case ErrorMsg:
+		m.Phase = PhaseError
+		m.Err = msg.Err
+		return m, nil
+
+	case spinner.TickMsg:
+		if m.Phase == PhaseScanning {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+
+	case progress.FrameMsg:
+		progressModel, cmd := m.progress.Update(msg)
+		m.progress = progressModel.(progress.Model)
+		return m, cmd
+
+	case tickMsg:
+		if m.Phase == PhaseExecuting && m.copyTotal > 0 {
+			cmd := m.progress.SetPercent(float64(m.copyProgress) / float64(m.copyTotal))
+			return m, tea.Batch(cmd, tickCmd())
+		}
+	}
+
+	return m, nil
+}
+
+// Additional message types
+type (
+	ConfirmMsg struct{ Confirmed bool }
+)
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+func (m Model) View() string {
+	if m.Quitting {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Header
+	b.WriteString(m.renderHeader())
+	b.WriteString("\n\n")
+
+	switch m.Phase {
+	case PhaseScanning:
+		b.WriteString(m.renderScanning())
+	case PhasePreview, PhaseDone:
+		b.WriteString(m.renderPreview())
+		if m.Phase == PhaseDone && !m.config.DryRun {
+			b.WriteString("\n")
+			b.WriteString(m.renderCompletion())
+		}
+	case PhaseConfirm:
+		b.WriteString(m.renderPreview())
+		b.WriteString("\n")
+		b.WriteString(m.renderConfirmPrompt())
+	case PhaseExecuting:
+		b.WriteString(m.renderExecution())
+	case PhaseError:
+		b.WriteString(m.renderError())
+	}
+
+	// Help
+	b.WriteString("\n")
+	b.WriteString(m.renderHelp())
+
+	return b.String()
+}
+
+func (m Model) renderHeader() string {
+	title := titleStyle.Render("📷 Phopy")
+	subtitle := subtitleStyle.Render("Photo organization made simple")
+
+	dimStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		subtitle,
+		"",
+		dimStyle.Render(fmt.Sprintf("%s Source: %s", iconFolder, m.config.SourceDir)),
+		dimStyle.Render(fmt.Sprintf("%s Target: %s", iconFolder, m.config.TargetDir)),
+	)
+}
+
+func (m Model) renderScanning() string {
+	return fmt.Sprintf("%s Scanning photos...", m.spinner.View())
+}
+
+func (m Model) renderPreview() string {
+	var b strings.Builder
+
+	// Files to copy section
+	b.WriteString(sectionStyle.Render("Files to Copy"))
+	b.WriteString("\n\n")
+
+	if len(m.Plan.Items) == 0 {
+		dimStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+		b.WriteString(dimStyle.Render("  No files to copy"))
+		b.WriteString("\n")
+	} else {
+		lines := formatFileList(m.Plan.Items, 6)
+		for _, line := range lines {
+			b.WriteString("  ")
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+
+	// Override section if any
+	if len(m.Plan.OverrideItems) > 0 {
+		b.WriteString("\n")
+		b.WriteString(warningStyle.Render(fmt.Sprintf("%s Override Required (%d files)", iconOverride, len(m.Plan.OverrideItems))))
+		b.WriteString("\n\n")
+
+		for i, item := range m.Plan.OverrideItems {
+			if i >= 4 {
+				b.WriteString(fmt.Sprintf("  ... and %d more\n", len(m.Plan.OverrideItems)-4))
+				break
+			}
+			b.WriteString(fmt.Sprintf("  %s %s\n",
+				overrideStyle.Render(iconOverride),
+				fileNameStyle.Render(item.FileMeta.Name),
+			))
+		}
+	}
+
+	// Summary
+	b.WriteString("\n")
+	b.WriteString(m.renderSummary())
+
+	// Warnings
+	if m.config.Verbose && len(m.Plan.Warnings) > 0 {
+		b.WriteString("\n\n")
+		b.WriteString(warningStyle.Render("Warnings:"))
+		b.WriteString("\n")
+		for _, w := range m.Plan.Warnings {
+			b.WriteString(fmt.Sprintf("  %s %s\n", iconOverride, w))
+		}
+	}
+
+	return b.String()
+}
+
+func (m Model) renderSummary() string {
+	var b strings.Builder
+
+	b.WriteString(sectionStyle.Render("Summary"))
+	b.WriteString("\n\n")
+
+	// Date range
+	if m.Plan.RangeStart != nil && m.Plan.RangeEnd != nil {
+		dateRange := fmt.Sprintf("%s %s %s",
+			m.Plan.RangeStart.Format("2006-01-02"),
+			iconArrow,
+			m.Plan.RangeEnd.Format("2006-01-02"),
+		)
+		b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Date Range:"), dateStyle.Render(dateRange)))
+	}
+
+	// File counts
+	rawStat := fmt.Sprintf("%s %d", iconRAW, m.Plan.RawCount)
+	jpegStat := fmt.Sprintf("%s %d", iconJPEG, m.Plan.JpegCount)
+
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("RAW files:"), rawFileStyle.Render(rawStat)))
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("JPEG files:"), jpegFileStyle.Render(jpegStat)))
+	dimStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+	b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Skipped JPEGs:"), dimStyle.Render(fmt.Sprintf("%s %d", iconSkipped, m.Plan.SkippedJPEGs))))
+
+	if m.Plan.RawOverrides+m.Plan.JpegOverrides > 0 {
+		overrideCount := m.Plan.RawOverrides + m.Plan.JpegOverrides
+		b.WriteString(fmt.Sprintf("  %s  %s\n", statLabelStyle.Render("Overrides:"), warningStyle.Render(fmt.Sprintf("%s %d", iconOverride, overrideCount))))
+	}
+
+	if m.config.DryRun {
+		b.WriteString("\n")
+		b.WriteString(highlightBoxStyle.Render("🔍 Dry Run - No files were copied"))
+	}
+
+	return b.String()
+}
+
+func (m Model) renderConfirmPrompt() string {
+	prompt := confirmPromptStyle.Render(fmt.Sprintf("Override %d existing files?", len(m.Plan.OverrideItems)))
+
+	var yesBtn, noBtn string
+	if m.confirmSelection {
+		yesBtn = highlightBoxStyle.Copy().
+			Background(lipgloss.Color("#2D5A27")).
+			Render(" Yes ")
+		noBtn = boxStyle.Render(" No ")
+	} else {
+		yesBtn = boxStyle.Render(" Yes ")
+		noBtn = highlightBoxStyle.Copy().
+			Background(lipgloss.Color("#5A2727")).
+			Render(" No ")
+	}
+
+	buttons := lipgloss.JoinHorizontal(lipgloss.Center, yesBtn, "  ", noBtn)
+
+	return lipgloss.JoinVertical(lipgloss.Left, prompt, "", buttons)
+}
+
+func (m Model) renderExecution() string {
+	var b strings.Builder
+
+	b.WriteString(sectionStyle.Render("Copying Files"))
+	b.WriteString("\n\n")
+
+	// Progress bar
+	percent := 0.0
+	if m.copyTotal > 0 {
+		percent = float64(m.copyProgress) / float64(m.copyTotal)
+	}
+
+	b.WriteString(fmt.Sprintf("  %s\n", m.progress.ViewAs(percent)))
+	b.WriteString(fmt.Sprintf("  %s / %s files\n",
+		statValueStyle.Render(fmt.Sprintf("%d", m.copyProgress)),
+		statValueStyle.Render(fmt.Sprintf("%d", m.copyTotal)),
+	))
+
+	if m.currentFile != "" {
+		b.WriteString(fmt.Sprintf("\n  %s %s\n",
+			iconArrow,
+			pathStyle.Render(m.currentFile),
+		))
+	}
+
+	return b.String()
+}
+
+func (m Model) renderCompletion() string {
+	icon := successStyle.Render(iconSuccess)
+	msg := successStyle.Render("Copy completed successfully!")
+
+	return highlightBoxStyle.Copy().
+		BorderForeground(secondaryColor).
+		Render(fmt.Sprintf("%s %s", icon, msg))
+}
+
+func (m Model) renderError() string {
+	icon := errorStyle.Render(iconError)
+	msg := errorStyle.Render(fmt.Sprintf("Error: %s", m.Err.Error()))
+
+	return highlightBoxStyle.Copy().
+		BorderForeground(errorColor).
+		Render(fmt.Sprintf("%s %s", icon, msg))
+}
+
+func (m Model) renderHelp() string {
+	var help string
+	switch m.Phase {
+	case PhaseScanning:
+		help = "Press q to quit"
+	case PhasePreview:
+		help = "Press q to quit"
+	case PhaseConfirm:
+		help = "← → or y/n to select • Enter to confirm • q to quit"
+	case PhaseExecuting:
+		help = "Copying files... Press q to cancel"
+	case PhaseDone, PhaseError:
+		help = "Press Enter or q to exit"
+	}
+	return helpStyle.Render(help)
+}
+
+// formatFileList formats a list of copy items for display
+func formatFileList(items []domain.CopyItem, maxItems int) []string {
+	if len(items) == 0 {
+		return []string{}
+	}
+
+	lines := make([]string, 0, min(len(items), maxItems+1))
+
+	showCount := min(len(items), maxItems)
+	if len(items) > maxItems {
+		// Show first half and last half
+		half := maxItems / 2
+		for i := 0; i < half; i++ {
+			lines = append(lines, formatFileItem(items[i]))
+		}
+		dimStyle := lipgloss.NewStyle().Foreground(dimTextColor)
+		lines = append(lines, dimStyle.Render(fmt.Sprintf("... %d more files ...", len(items)-maxItems)))
+		for i := len(items) - half; i < len(items); i++ {
+			lines = append(lines, formatFileItem(items[i]))
+		}
+	} else {
+		for i := 0; i < showCount; i++ {
+			lines = append(lines, formatFileItem(items[i]))
+		}
+	}
+
+	return lines
+}
+
+func formatFileItem(item domain.CopyItem) string {
+	icon := iconJPEG
+	style := jpegFileStyle
+	if item.FileMeta.IsRAW {
+		icon = iconRAW
+		style = rawFileStyle
+	}
+
+	name := style.Render(item.FileMeta.Name)
+	date := dateStyle.Render(item.FileMeta.TakenAt.Format("2006-01-02 15:04"))
+
+	return fmt.Sprintf("%s %s  %s", icon, name, date)
+}
+
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

@@ -1,22 +1,22 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"phopy/internal/app"
 	"phopy/internal/config"
+	"phopy/internal/domain"
 	appErrors "phopy/internal/errors"
 	"phopy/internal/infra/exif"
 	"phopy/internal/infra/fs"
 	"phopy/internal/logging"
-	"phopy/internal/presentation"
+	"phopy/internal/tui"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -79,65 +79,137 @@ func run(ctx context.Context, opts cliOptions) error {
 		return appErrors.Wrap(appErrors.InvalidConfig, "config", "", err)
 	}
 
-	logger := logging.New(os.Stdout, cfg.Verbose)
-	logger.Verbosef("Config: source=%s target=%s dry-run=%t date-range=%s", cfg.SourceDir, cfg.TargetDir, cfg.DryRun, formatDateRange(cfg.StartDate, cfg.EndDate))
-
+	// Create infrastructure
 	filesystem := fs.OSFS{}
 	exifReader := exif.Reader{}
+	logger := logging.New(os.Stdout, cfg.Verbose)
 
+	// Verify source directory exists
 	if _, err := filesystem.Stat(cfg.SourceDir); err != nil {
 		return appErrors.Wrap(appErrors.NotFound, "stat", cfg.SourceDir, err)
 	}
 
+	// Create planner
 	planner := app.Planner{
 		FS:     filesystem,
 		Exif:   exifReader,
 		Logger: logger,
 	}
 
-	plan, err := planner.Plan(ctx, cfg.SourceDir, cfg.TargetDir, cfg.StartDate, cfg.EndDate)
+	// Create TUI config
+	tuiConfig := tui.Config{
+		SourceDir: cfg.SourceDir,
+		TargetDir: cfg.TargetDir,
+		DryRun:    cfg.DryRun,
+		Verbose:   cfg.Verbose,
+	}
+
+	// Create the TUI model
+	m := tui.NewModel(tuiConfig)
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
+
+	// Channels for communication
+	planDone := make(chan struct{})
+	var plan domain.CopyPlan
+	var planErr error
+
+	// Run planning in background
+	go func() {
+		defer close(planDone)
+		plan, planErr = planner.Plan(ctx, cfg.SourceDir, cfg.TargetDir, cfg.StartDate, cfg.EndDate)
+		if planErr != nil {
+			p.Send(tui.ErrorMsg{Err: appErrors.Wrap(appErrors.Internal, "plan", cfg.SourceDir, planErr)})
+			return
+		}
+		p.Send(tui.PlanReadyMsg{Plan: plan})
+	}()
+
+	// Run the TUI
+	finalModel, err := p.Run()
 	if err != nil {
-		return appErrors.Wrap(appErrors.Internal, "plan", cfg.SourceDir, err)
+		return appErrors.Wrap(appErrors.Internal, "tui", "", err)
 	}
 
-	printer := presentation.Printer{
-		Writer:  os.Stdout,
-		Verbose: cfg.Verbose,
-	}
+	final := finalModel.(tui.Model)
 
-	if cfg.DryRun {
-		logger.Verbosef("Dry run: no files will be copied")
-		printer.PrintDryRun(plan)
+	// If quitting early, exit gracefully
+	if final.Quitting {
 		return nil
 	}
 
-	includeOverrides := false
-	overridesConfirmed := 0
-	if len(plan.OverrideItems) > 0 {
-		logger.Verbosef("Override confirmation required for %d files", len(plan.OverrideItems))
-		confirmed, confirmErr := confirmOverrides(len(plan.OverrideItems))
-		if confirmErr != nil {
-			return appErrors.Wrap(appErrors.Internal, "prompt", "", confirmErr)
-		}
-		includeOverrides = confirmed
-		if confirmed {
-			overridesConfirmed = len(plan.OverrideItems)
-		}
+	// Wait for planning to complete
+	<-planDone
+	if planErr != nil {
+		return appErrors.Wrap(appErrors.Internal, "plan", cfg.SourceDir, planErr)
 	}
 
-	logger.Verbosef("Ensuring target directory exists")
+	// If dry run, we're done (TUI already showed the preview)
+	if cfg.DryRun {
+		return nil
+	}
+
+	// Check if we got the plan and handle execution
+	if final.Phase == tui.PhaseError {
+		return final.Err
+	}
+
+	// Determine if overrides were confirmed
+	includeOverrides := final.OverridesConfirmed > 0
+
+	// Ensure target directory exists
 	if err := filesystem.MkdirAll(cfg.TargetDir, 0o755); err != nil {
 		return appErrors.Wrap(appErrors.IOFailure, "mkdir", cfg.TargetDir, err)
 	}
 
+	// Execute the copy
 	executor := app.Executor{FS: filesystem, Logger: logger}
-	if err := executor.Execute(ctx, plan, includeOverrides); err != nil {
+	if err := executor.Execute(ctx, final.Plan, includeOverrides); err != nil {
 		return appErrors.Wrap(appErrors.IOFailure, "copy", cfg.TargetDir, err)
 	}
-	logger.Verbosef("Copy complete")
 
-	printer.PrintExecution(plan, overridesConfirmed)
+	// Print completion summary
+	printCompletionSummary(final.Plan, includeOverrides)
+
 	return nil
+}
+
+func printCompletionSummary(plan domain.CopyPlan, overridesIncluded bool) {
+	successColor := lipgloss.Color("#85DCB0")
+	primaryColor := lipgloss.Color("#E8A87C")
+	dimColor := lipgloss.Color("#9CA3AF")
+
+	successStyle := lipgloss.NewStyle().
+		Foreground(successColor).
+		Bold(true)
+
+	statStyle := lipgloss.NewStyle().
+		Foreground(primaryColor)
+
+	dimStyle := lipgloss.NewStyle().
+		Foreground(dimColor)
+
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(successColor).
+		Padding(1, 2).
+		MarginTop(1)
+
+	// Build summary content
+	totalCopied := plan.RawCount + plan.JpegCount
+	content := fmt.Sprintf("%s Copy completed successfully!\n\n", successStyle.Render("✓"))
+	content += fmt.Sprintf("  %s %s\n", dimStyle.Render("RAW files:"), statStyle.Render(fmt.Sprintf("◆ %d", plan.RawCount)))
+	content += fmt.Sprintf("  %s %s\n", dimStyle.Render("JPEG files:"), statStyle.Render(fmt.Sprintf("◇ %d", plan.JpegCount)))
+	content += fmt.Sprintf("  %s %s\n", dimStyle.Render("Total:"), statStyle.Render(fmt.Sprintf("%d files", totalCopied)))
+
+	if plan.SkippedJPEGs > 0 {
+		content += fmt.Sprintf("  %s %s\n", dimStyle.Render("Skipped:"), dimStyle.Render(fmt.Sprintf("○ %d JPEGs (RAW exists)", plan.SkippedJPEGs)))
+	}
+
+	if overridesIncluded && (plan.RawOverrides+plan.JpegOverrides) > 0 {
+		content += fmt.Sprintf("  %s %s\n", dimStyle.Render("Overwritten:"), statStyle.Render(fmt.Sprintf("⚠ %d files", plan.RawOverrides+plan.JpegOverrides)))
+	}
+
+	fmt.Println(boxStyle.Render(content))
 }
 
 func isInvalidConfig(err error) bool {
@@ -174,33 +246,7 @@ func newCompletionCmd() *cobra.Command {
 	return cmd
 }
 
-func confirmOverrides(count int) (bool, error) {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("Override %d existing files? [y/N]: ", count)
-	answer, err := reader.ReadString('\n')
-	if err != nil {
-		return false, err
-	}
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	return answer == "y" || answer == "yes", nil
-}
-
 func exitWithError(err error) {
 	fmt.Fprintln(os.Stderr, appErrors.UserMessage(err))
 	os.Exit(1)
-}
-
-func formatDateRange(startDate, endDate *time.Time) string {
-	if startDate == nil && endDate == nil {
-		return "all dates"
-	}
-	start := "any"
-	if startDate != nil {
-		start = startDate.Format("2006-01-02")
-	}
-	end := "any"
-	if endDate != nil {
-		end = endDate.Format("2006-01-02")
-	}
-	return fmt.Sprintf("%s to %s", start, end)
 }
