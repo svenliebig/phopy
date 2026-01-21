@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -26,9 +25,6 @@ var version = "dev"
 func main() {
 	cmd := newRootCmd()
 	if err := cmd.Execute(); err != nil {
-		if isInvalidConfig(err) {
-			_ = cmd.Usage()
-		}
 		exitWithError(err)
 	}
 }
@@ -53,6 +49,31 @@ func newRootCmd() *cobra.Command {
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Validate required flags (also checking environment variables)
+			source := opts.sourceDir
+			if source == "" {
+				source = os.Getenv("PHOPY_SOURCE_DIR")
+			}
+			target := opts.targetDir
+			if target == "" {
+				target = os.Getenv("PHOPY_TARGET_DIR")
+			}
+
+			var missing []string
+			if source == "" {
+				missing = append(missing, "source (-s, --source, or PHOPY_SOURCE_DIR)")
+			}
+			if target == "" {
+				missing = append(missing, "target (-t, --target, or PHOPY_TARGET_DIR)")
+			}
+
+			if len(missing) > 0 {
+				_ = cmd.Help()
+				return fmt.Errorf("\nError: required flag(s) %q not set", missing)
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd.Context(), opts)
 		},
@@ -189,14 +210,6 @@ func run(ctx context.Context, opts cliOptions) error {
 	}
 
 	return nil
-}
-
-func isInvalidConfig(err error) bool {
-	var appErr *appErrors.AppError
-	if errors.As(err, &appErr) {
-		return appErr.Kind == appErrors.InvalidConfig
-	}
-	return false
 }
 
 func newCompletionCmd() *cobra.Command {
